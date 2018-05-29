@@ -15,8 +15,6 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Set working directory and load data [^1]
 ##### C2VSim Groundwater, Land, and Root Zone Budgets are for the 40 year period from 10/31/1961-9/30/2001. [@Brush2013].
 ```{r set working directory and load data, warning = F, message = F}
-setwd("/Users/richpauloo/Documents/GitHub/MCMM/Monte-Carlo-Mixing-Model")
-
 # Groundwater budget (10/31/1961-9/30/2001)
 GW = read.csv(file = "GW.csv", stringsAsFactors = FALSE, header = TRUE) 
 
