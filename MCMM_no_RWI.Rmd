@@ -26,8 +26,8 @@ RZ = read.csv(file = "RZ.csv", stringsAsFactors = FALSE, header = TRUE)
 
 # Bring in boundary condition data from Tulare_well_stats.Rmd
 library(dplyr)
+boundary_dat <- readRDS("boundary_dat.rds")
 bd <- boundary_dat %>% dplyr::select(x,y) %>% mutate(x = abs(x)) %>% arrange(x) %>% as.matrix()
-
 ```
 [^1]: Original C2VSim model files (R374) can be found at: <http://baydeltaoffice.water.ca.gov/modeling/hydrology/C2VSim/index_C2VSIM.cfm>
 
@@ -322,137 +322,142 @@ pl = data.frame(depth = layer_depths_mean, TDS1 = TDS_mean[,1], TDS2 = TDS_mean[
                 U7 = TDS_95[,7], L7 = TDS_5[,7],
                 U8 = TDS_95[,8], L8 = TDS_5[,8])
 
-ymax = 25000 # maximum TDS concentration (mg/L) to display on y axis
+ymax = 10000 # maximum TDS concentration (mg/L) to display on y axis
+ymin = 0
 
 ## 0 yrs
 p1 = ggplot(pl, aes(depth)) +
   geom_line(aes(y = pl$TDS1), color = 'red') +
   geom_ribbon(aes(ymin = pl$L1, ymax = pl$U1), alpha=.4) + 
-  aes(ymax = ymax) +
+  aes(ymax = ymax, ymin = ymin) +
   ylab("TDS (mg/L)") +
   xlab("depth below land surface (ft.)")  + 
-  ggtitle("0 yrs.") + 
+  ggtitle("0 years") + 
   geom_hline(yintercept = 1000, linetype = "longdash") +
   theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 10)) + 
+  theme(text=element_text(family="Times New Roman", size = 20)) + 
   coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(5000,15000,25000))
+  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
 
 ## 50 yrs
 p2 = ggplot(pl, aes(depth)) +
   geom_line(aes(y = pl$TDS2), color = 'red') +
   geom_ribbon(aes(ymin = pl$L2, ymax = pl$U2), alpha=.4) + 
-  aes(ymax = ymax) +
+  aes(ymax = ymax, ymin = ymin) +
   ylab("TDS (mg/L)") +
   xlab("depth below land surface (ft.)")  + 
-  ggtitle("50 yrs.") + 
+  ggtitle("50 years") + 
   geom_hline(yintercept = 1000, linetype = "longdash") +
   theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 10)) + 
+  theme(text=element_text(family="Times New Roman", size = 20)) + 
   coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(5000,15000,25000))
+  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
 
 ## 100 yrs
 p3 = ggplot(pl, aes(depth)) +
   geom_line(aes(y = pl$TDS3), color = 'red') +
   geom_ribbon(aes(ymin = pl$L3, ymax = pl$U3), alpha=.4) + 
-  aes(ymax = ymax) +
+  aes(ymax = ymax, ymin = ymin) +
   ylab("TDS (mg/L)") +
   xlab("depth below land surface (ft.)")  + 
-  ggtitle("100 yrs.") + 
+  ggtitle("100 years") + 
   geom_hline(yintercept = 1000, linetype = "longdash") +
   theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 10)) + 
+  theme(text=element_text(size = 20)) + 
   coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(5000,15000,25000))
+  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
 
 # for comparison to data
-p3 = ggplot(pl, aes(depth)) +
-  geom_line(aes(y = pl$TDS3), color = 'red') +
-  geom_ribbon(aes(ymin = pl$L3, ymax = pl$U3), alpha=.4) +
-  aes(ymax = ymax) +
-  ylab("TDS (mg/L)") +
-  xlab("depth below land surface (ft.)")  +
-  ggtitle("100 yrs.") +
-  geom_hline(yintercept = 1000, linetype = "longdash") +
-  theme(axis.text=element_text(size=14)) +
-  #theme(text=element_text(family="Times New Roman", size = 20)) +
-  coord_flip(ylim = c(100,10000), xlim= c(-1000,-200)) +
-  scale_y_log10(breaks = c(0,10,100,1000,10000,100000), labels = comma(c(0,10,100,1000,10000,100000)), limits = c(10,100000))
+# p3 = ggplot(pl, aes(depth)) +
+#   geom_line(aes(y = pl$TDS3), color = 'red') +
+#   geom_ribbon(aes(ymin = pl$L3, ymax = pl$U3), alpha=.4) +
+#   aes(ymax = ymax) +
+#   ylab("TDS (mg/L)") +
+#   xlab("depth below land surface (ft.)")  +
+#   ggtitle("100 years") +
+#   geom_hline(yintercept = 1000, linetype = "longdash") +
+#   theme(axis.text=element_text(size=14)) +
+#   #theme(text=element_text(family="Times New Roman", size = 20)) +
+#   coord_flip(ylim = c(100,10000), xlim= c(-1000,-200)) +
+#   scale_y_log10(breaks = c(0,10,100,1000,10000,100000), labels = comma(c(0,10,100,1000,10000,100000)), limits = c(10,100000))
 
 ## 150 yrs
 p4 = ggplot(pl, aes(depth)) +
   geom_line(aes(y = pl$TDS4), color = 'red') +
   geom_ribbon(aes(ymin = pl$L4, ymax = pl$U4), alpha=.4) + 
-  aes(ymax = ymax) +
+  aes(ymax = ymax, ymin = ymin) +
   ylab("TDS (mg/L)") +
   xlab("depth below land surface (ft.)")  + 
-  ggtitle("150 yrs.") + 
+  ggtitle("150 years") + 
   geom_hline(yintercept = 1000, linetype = "longdash") +
   theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 10)) + 
+  theme(text=element_text(family="Times New Roman", size = 20)) + 
   coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(5000,15000,25000))
+  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
 
 ## 200 yrs
 p5 = ggplot(pl, aes(depth)) +
   geom_line(aes(y = pl$TDS5), color = 'red') +
   geom_ribbon(aes(ymin = pl$L5, ymax = pl$U5), alpha=.4) + 
-  aes(ymax = ymax) +
+  aes(ymax = ymax, ymin = ymin) +
   ylab("TDS (mg/L)") +
   xlab("depth below land surface (ft.)")  + 
-  ggtitle("200 yrs.") + 
+  ggtitle("200 years") + 
   geom_hline(yintercept = 1000, linetype = "longdash") +
   theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 10)) + 
+  theme(text=element_text(family="Times New Roman", size = 20)) + 
   coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(5000,15000,25000))
+  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
 
 ## 250 yrs
 p6 = ggplot(pl, aes(depth)) +
   geom_line(aes(y = pl$TDS6), color = 'red') +
   geom_ribbon(aes(ymin = pl$L6, ymax = pl$U6), alpha=.4) + 
-  aes(ymax = ymax) +
+  aes(ymax = ymax, ymin = ymin) +
   ylab("TDS (mg/L)") +
   xlab("depth below land surface (ft.)")  + 
-  ggtitle("250 yrs.") + 
+  ggtitle("250 years") + 
   geom_hline(yintercept = 1000, linetype = "longdash") +
   theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 10)) + 
+  theme(text=element_text(family="Times New Roman", size = 20)) + 
   coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(5000,15000,25000))
+  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
 
 ## 300 yrs
 p7 = ggplot(pl, aes(depth)) +
   geom_line(aes(y = pl$TDS7), color = 'red') +
   geom_ribbon(aes(ymin = pl$L7, ymax = pl$U7), alpha=.4) + 
-  aes(ymax = ymax) +
+  aes(ymax = ymax, ymin = ymin) +
   ylab("TDS (mg/L)") +
   xlab("depth below land surface (ft.)")  + 
-  ggtitle("300 yrs.") + 
+  ggtitle("300 years") + 
   geom_hline(yintercept = 1000, linetype = "longdash") +
   theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 10)) + 
+  theme(text=element_text(family="Times New Roman", size = 20)) + 
   coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(5000,15000,25000))
+  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
 
 ## 350 yrs
 p8 = ggplot(pl, aes(depth)) +
   geom_line(aes(y = pl$TDS8), color = 'red') +
   geom_ribbon(aes(ymin = pl$L8, ymax = pl$U8), alpha=.4) + 
-  aes(ymax = ymax) +
+  aes(ymax = ymax, ymin = ymin) +
   ylab("TDS (mg/L)") +
   xlab("depth below land surface (ft.)")  + 
-  ggtitle("350 yrs.") + 
+  ggtitle("350 years") + 
   geom_hline(yintercept = 1000, linetype = "longdash") +
   theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 10)) + 
+  theme(text=element_text(family="Times New Roman", size = 20)) + 
   coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(5000,15000,25000))
+  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
 
+# save
+for(i in 1:8){
+  ggsave(get(paste0("p",i)), file = paste0("p",i,".png"), dpi = 300, height = 6, width = 8)
+}
 
 ## arrange p1 - p8 into one plot
-p <- grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8, ncol=3, nrow=3, vp=viewport(width=0.95, height=0.95))
+#p <- grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8, ncol=3, nrow=3, vp=viewport(width=0.95, height=0.95))
 
 #ggsave("p_no_RWI.PNG", p, height = 8.5, width = 11, units = "in", dpi = 300)
 #ggsave("p3_no_RWI.PNG", p3, height = 8.5, width = 11, units = "in", dpi = 300)

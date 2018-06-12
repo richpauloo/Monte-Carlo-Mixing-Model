@@ -1,6 +1,10 @@
 # Deterministic Monte Carlo Mixing Model of Solute Transport in the Tulare Basin, California  
 
-created July 7, 2017 by [Rich Pauloo](richpauloo@gmail.com) at the University of California Davis  
+created July 7, 2017 by [Rich Pauloo](richpauloo@gmail.com) at the University of California Davis   
+
+
+~[Groundwater salinization with depth is an output of the mixing model.](salinization.gif)  
+
 
 ***  
 
