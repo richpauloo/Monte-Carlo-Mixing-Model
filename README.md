@@ -3,7 +3,7 @@
 created July 7, 2017 by [Rich Pauloo](richpauloo@gmail.com) at the University of California Davis   
 
 
-~[Groundwater salinization with depth is an output of the mixing model.](salinization.gif)  
+![Groundwater salinization with depth is an output of the mixing model.](salinization.gif)  
 
 
 ***  
