@@ -26,6 +26,7 @@ The model depends on 4 input files, found in `data`
  
 Results are summarized into 3 plots and printed by the model as PDF files into `results`. To obtain the actual arrays of model output, it is necessary to run the model to bring these objects into memory.  
 
+The `archive` folder contains old scripts related to the model that are kept for posterity and reference.  
  
 ***  
 
