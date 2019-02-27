@@ -3,7 +3,6 @@ title: "Deterministic Monte Carlo Mixing Model of Regional Groundwater Salinizat
 author: "Rich Pauloo"
 date: "7/4/2017"
 output: html_document
-bibliography: ref.bib
 ---
 
 ```{r setup, include=FALSE}
@@ -16,17 +15,17 @@ knitr::opts_chunk$set(echo = TRUE)
 ##### C2VSim Groundwater, Land, and Root Zone Budgets are for the 40 year period from 10/31/1961-9/30/2001. [@Brush2013].
 ```{r set working directory and load data, warning = F, message = F}
 # Groundwater budget (10/31/1961-9/30/2001)
-GW = read.csv(file = "GW.csv", stringsAsFactors = FALSE, header = TRUE) 
+GW = read.csv(file = "data/GW.csv", stringsAsFactors = FALSE, header = TRUE) 
 
 # Land Budget budget (10/31/1961-9/30/2001)
-LB = read.csv(file = "LB.csv", stringsAsFactors = FALSE, header = TRUE)
+LB = read.csv(file = "data/LB.csv", stringsAsFactors = FALSE, header = TRUE)
 
 # Root Zone budget (10/31/1961-9/30/2001)
-RZ = read.csv(file = "RZ.csv", stringsAsFactors = FALSE, header = TRUE) 
+RZ = read.csv(file = "data/RZ.csv", stringsAsFactors = FALSE, header = TRUE) 
 
 # Bring in boundary condition data from Tulare_well_stats.Rmd
 library(dplyr)
-boundary_dat <- readRDS("boundary_dat.rds")
+boundary_dat <- readRDS("data/boundary_dat.rds")
 bd <- boundary_dat %>% dplyr::select(x,y) %>% 
   mutate(x = abs(x) * 3.28084) %>% # convert m to ft for model
   arrange(x) %>% 
@@ -362,8 +361,9 @@ p <- df %>% filter(time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250
   scale_y_continuous(breaks = c(1000, 5000, 10000), labels = c('1,000', '5,000', '10,000')) + 
   labs(x = "Depth (m)", y = "TDS (mg/L)")
 
-ggsave(p, filename = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/p_sim.pdf", 
-       device = cairo_pdf, height = 5, width = 7)
+p
+
+ggsave(p, filename = "results/p_sim.pdf", device = cairo_pdf, height = 5, width = 7)
 ```
 
 
@@ -421,8 +421,9 @@ p2 <- ggplot(EC_dat, aes(x=time, y=mean, fill=legend)) +
   theme_minimal() +
   theme(legend.position = c(0.22, 0.75))
 
+p2
 # save
-ggsave("p_ec.pdf", p2, height= 4, width = 7, device = cairo_pdf)
+ggsave("results/p_ec.pdf", p2, height= 4, width = 7, device = cairo_pdf)
 ```
 
 
@@ -482,7 +483,7 @@ p3 <- ggplot(df3, aes(factor(t), m, fill = type)) +
   theme(legend.position = c(0.22, 0.75)) +
   labs(x = "Time", y = "Annual Mass (Metric Tons)")
 
-ggsave("p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf)
+ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf)
 ```
 
 
@@ -495,107 +496,130 @@ ggsave("p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf)
 
 
 
-## Table 1: Mass loading into entire GW system from various water budget terms and sources (Mtons)
-```{r Table 1: Mass loading into entire GW system from various water budget terms and sources (Mtons), warning=F, message=F}
-# RWI mean, and CIs
-RWI_mean = mean(colSums((RWI_cont[1:7,1,]*lay_vol[1:7,1,])/50)) # mg
-RWI_5 = quantile(colSums(RWI_cont[1:7,1,]), c(0.05))
-RWI_95 = quantile(colSums(RWI_cont[1:7,1,]), c(0.95))
-
-# table setup
-tstep = 1 # time step of NDP
-table1 = data.frame("term" = c("Stream","R","Lake","BI","Sub","SW_D",
-                               "SI","EC_mean", "EC_5","EC_95", 
-                               "RWI_mean","RWI_5", "RWI_95"),
-                    "mass" = c(mg_to_Mton(annual_fluxes[2,4]), mg_to_Mton(annual_fluxes[3,4]),
-                               mg_to_Mton(annual_fluxes[4,4]), mg_to_Mton(annual_fluxes[5,4]),
-                               mg_to_Mton(annual_fluxes[6,4]), SW_annual_mass,
-                               mg_to_Mton(annual_fluxes[8,4]),
-                               mg_to_Mton(EC_mean[tstep,1] * annual_fluxes[1,2]),
-                               mg_to_Mton(EC_5[tstep,1] * annual_fluxes[1,2]), 
-                               mg_to_Mton(EC_95[tstep,1] * annual_fluxes[1,2]),
-                               mg_to_Mton(RWI_mean), 
-                               mg_to_Mton(RWI_5),
-                               mg_to_Mton(RWI_95)))
-table1
-```
-
-
-## Plot 3: Average Vertical Groundwater Pore Velocity Profile
-```{r Plot 3: Average Vertical Groundwater Pore Velocity Profile, warning=F, message=F}
-# organize data
-plot3data = data.frame(x = layer_velocity_mean[1:7,1], 
-                  y = as.matrix(layer_depths_mean[1:7,1]))
-plot3 = ggplot(plot3data, aes(x = x, y = y)) + 
-  geom_smooth(method="lm", se= FALSE, color = c("gray40"), formula = y ~ x) +
-  geom_point(shape=16, cex=3) +
-  xlab("averge linear pore velocity (ft/yr)") +
-  ylab("depth below land surface") +
-  theme_bw() +
-  ggtitle("Mean Linear Pore Velocity") +
-  theme(axis.text = element_text(size=16), axis.title = element_text(size=18)) + 
-  theme(text=element_text(family="Times New Roman", size=18)) 
-
-plot3
-```
 
 
 
 
 
-## Plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step
-```{r Plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step}
-## calculate annual mass loading in entire system from RWI and non-RWI sources per time step
-table1 = matrix(0,4,7)
-for(tstep in 1:7){
-  table1[1,tstep] = sum(mg_to_Mton(annual_fluxes[2,4]), mg_to_Mton(annual_fluxes[3,4]),
-                        mg_to_Mton(annual_fluxes[4,4]), mg_to_Mton(annual_fluxes[5,4]),
-                        mg_to_Mton(annual_fluxes[6,4]), SW_annual_mass,
-                        mg_to_Mton(annual_fluxes[8,4]))
-  table1[2,tstep] = mg_to_Mton(EC_median[tstep,1] * annual_fluxes[1,2]) 
-  table1[3,tstep] = mg_to_Mton(EC_5[tstep,1] * annual_fluxes[1,2])
-  table1[4,tstep] = mg_to_Mton(EC_95[tstep,1] * annual_fluxes[1,2])
-  #table1[4,tstep] = mg_to_Mton(RWI_mean)
-}
 
-table1 = as.data.frame(table1)
-rownames(table1) = c('water_budget_terms','evaporite_median', 'evaporite_5', 'evaporite_95')
-colnames(table1) = paste0(seq(50,350,50), " yrs")
-table1 = t.data.frame(table1)
 
-mass_dat = data.frame("legend"=rep(c("A","B"), each=7),
-                    "time" = factor(rep(seq(50,350,50), times = 2)),
-                    "med" = c(table1[,1], table1[,2]),
-                    "p5" = c(rep(0,7), table1[,3]),
-                    "p95" = c(rep(0,7), table1[,4]))
 
-Mtons_to_metric_tons <- function(x){return(x * 907184.74)}
 
-mass_dat <- mass_dat %>% 
-  mutate(med = Mtons_to_metric_tons(med),
-         p5  = Mtons_to_metric_tons(p5),
-         p95 = Mtons_to_metric_tons(p95))
 
-# plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step
-plot4 = ggplot(mass_dat, aes(x=time, y=med, fill=legend)) +
-  geom_bar(position="dodge", stat="identity", 
-           colour = "black", size=.3) +
-  geom_errorbar(aes(ymin=p5, ymax=p95),
-                size=.3,    # thinner lines
-                width=.2,   # Width of the error bars
-                position=position_dodge(.9)) +
-  xlab("Time (yrs)") +
-  ylab("mass (Metric Tons)") +
-  scale_fill_hue(name="",
-                 breaks=c("A","B"),
-                 labels=c("I, C, W, R, L, B", 
-                          "N")) +
-  #ggtitle("Average Annual Mass Loading in Entire System") +
-  theme_minimal() + 
-  scale_y_continuous()
 
-plot4
-```
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- ## Table 1: Mass loading into entire GW system from various water budget terms and sources (Mtons) -->
+<!-- ```{r Table 1: Mass loading into entire GW system from various water budget terms and sources (Mtons), warning=F, message=F} -->
+<!-- # RWI mean, and CIs -->
+<!-- RWI_mean = mean(colSums((RWI_cont[1:7,1,]*lay_vol[1:7,1,])/50)) # mg -->
+<!-- RWI_5 = quantile(colSums(RWI_cont[1:7,1,]), c(0.05)) -->
+<!-- RWI_95 = quantile(colSums(RWI_cont[1:7,1,]), c(0.95)) -->
+
+<!-- # table setup -->
+<!-- tstep = 1 # time step of NDP -->
+<!-- table1 = data.frame("term" = c("Stream","R","Lake","BI","Sub","SW_D", -->
+<!--                                "SI","EC_mean", "EC_5","EC_95",  -->
+<!--                                "RWI_mean","RWI_5", "RWI_95"), -->
+<!--                     "mass" = c(mg_to_Mton(annual_fluxes[2,4]), mg_to_Mton(annual_fluxes[3,4]), -->
+<!--                                mg_to_Mton(annual_fluxes[4,4]), mg_to_Mton(annual_fluxes[5,4]), -->
+<!--                                mg_to_Mton(annual_fluxes[6,4]), SW_annual_mass, -->
+<!--                                mg_to_Mton(annual_fluxes[8,4]), -->
+<!--                                mg_to_Mton(EC_mean[tstep,1] * annual_fluxes[1,2]), -->
+<!--                                mg_to_Mton(EC_5[tstep,1] * annual_fluxes[1,2]),  -->
+<!--                                mg_to_Mton(EC_95[tstep,1] * annual_fluxes[1,2]), -->
+<!--                                mg_to_Mton(RWI_mean),  -->
+<!--                                mg_to_Mton(RWI_5), -->
+<!--                                mg_to_Mton(RWI_95))) -->
+<!-- table1 -->
+<!-- ``` -->
+
+
+<!-- ## Plot 3: Average Vertical Groundwater Pore Velocity Profile -->
+<!-- ```{r Plot 3: Average Vertical Groundwater Pore Velocity Profile, warning=F, message=F} -->
+<!-- # organize data -->
+<!-- plot3data = data.frame(x = layer_velocity_mean[1:7,1],  -->
+<!--                   y = as.matrix(layer_depths_mean[1:7,1])) -->
+<!-- plot3 = ggplot(plot3data, aes(x = x, y = y)) +  -->
+<!--   geom_smooth(method="lm", se= FALSE, color = c("gray40"), formula = y ~ x) + -->
+<!--   geom_point(shape=16, cex=3) + -->
+<!--   xlab("averge linear pore velocity (ft/yr)") + -->
+<!--   ylab("depth below land surface") + -->
+<!--   theme_bw() + -->
+<!--   ggtitle("Mean Linear Pore Velocity") + -->
+<!--   theme(axis.text = element_text(size=16), axis.title = element_text(size=18)) +  -->
+<!--   theme(text=element_text(family="Times New Roman", size=18))  -->
+
+<!-- plot3 -->
+<!-- ``` -->
+
+
+
+
+
+<!-- ## Plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step -->
+<!-- ```{r Plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step} -->
+<!-- ## calculate annual mass loading in entire system from RWI and non-RWI sources per time step -->
+<!-- table1 = matrix(0,4,7) -->
+<!-- for(tstep in 1:7){ -->
+<!--   table1[1,tstep] = sum(mg_to_Mton(annual_fluxes[2,4]), mg_to_Mton(annual_fluxes[3,4]), -->
+<!--                         mg_to_Mton(annual_fluxes[4,4]), mg_to_Mton(annual_fluxes[5,4]), -->
+<!--                         mg_to_Mton(annual_fluxes[6,4]), SW_annual_mass, -->
+<!--                         mg_to_Mton(annual_fluxes[8,4])) -->
+<!--   table1[2,tstep] = mg_to_Mton(EC_median[tstep,1] * annual_fluxes[1,2])  -->
+<!--   table1[3,tstep] = mg_to_Mton(EC_5[tstep,1] * annual_fluxes[1,2]) -->
+<!--   table1[4,tstep] = mg_to_Mton(EC_95[tstep,1] * annual_fluxes[1,2]) -->
+<!--   #table1[4,tstep] = mg_to_Mton(RWI_mean) -->
+<!-- } -->
+
+<!-- table1 = as.data.frame(table1) -->
+<!-- rownames(table1) = c('water_budget_terms','evaporite_median', 'evaporite_5', 'evaporite_95') -->
+<!-- colnames(table1) = paste0(seq(50,350,50), " yrs") -->
+<!-- table1 = t.data.frame(table1) -->
+
+<!-- mass_dat = data.frame("legend"=rep(c("A","B"), each=7), -->
+<!--                     "time" = factor(rep(seq(50,350,50), times = 2)), -->
+<!--                     "med" = c(table1[,1], table1[,2]), -->
+<!--                     "p5" = c(rep(0,7), table1[,3]), -->
+<!--                     "p95" = c(rep(0,7), table1[,4])) -->
+
+<!-- Mtons_to_metric_tons <- function(x){return(x * 907184.74)} -->
+
+<!-- mass_dat <- mass_dat %>%  -->
+<!--   mutate(med = Mtons_to_metric_tons(med), -->
+<!--          p5  = Mtons_to_metric_tons(p5), -->
+<!--          p95 = Mtons_to_metric_tons(p95)) -->
+
+<!-- # plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step -->
+<!-- plot4 = ggplot(mass_dat, aes(x=time, y=med, fill=legend)) + -->
+<!--   geom_bar(position="dodge", stat="identity",  -->
+<!--            colour = "black", size=.3) + -->
+<!--   geom_errorbar(aes(ymin=p5, ymax=p95), -->
+<!--                 size=.3,    # thinner lines -->
+<!--                 width=.2,   # Width of the error bars -->
+<!--                 position=position_dodge(.9)) + -->
+<!--   xlab("Time (yrs)") + -->
+<!--   ylab("mass (Metric Tons)") + -->
+<!--   scale_fill_hue(name="", -->
+<!--                  breaks=c("A","B"), -->
+<!--                  labels=c("I, C, W, R, L, B",  -->
+<!--                           "N")) + -->
+<!--   #ggtitle("Average Annual Mass Loading in Entire System") + -->
+<!--   theme_minimal() +  -->
+<!--   scale_y_continuous() -->
+
+<!-- plot4 -->
+<!-- ``` -->
 
 
 
@@ -810,7 +834,4 @@ plot4
 <!-- ``` -->
 
 
-# Appendix
-![](/Users/richpauloo/Documents/GitHub/MCMM/Monte-Carlo-Mixing-Model/Tulare_model_domain.PNG)  
 
-# References
