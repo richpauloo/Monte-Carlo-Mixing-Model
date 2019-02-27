@@ -487,6 +487,101 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 ```
 
 
+# GIF for github
+```{r}
+# mean TDS
+TDS_mean = as.data.frame(matrix(0,8,8))
+for(i in 1:8){
+  for(j in 1:8){
+    TDS_mean[i,j] = mean(TDS[i,j,])
+  }
+}
+
+# mean depths
+sd.top = matrix(0,7,8)
+sd.bottom = matrix(0,7,8)
+for(d in 1:7){
+  for(t in 1:8){
+    sd.top[d,t] = TDS_mean[d,t] - sd(TDS[d,t,]) # sd
+    sd.bottom[d,t] = TDS_mean[d,t] + sd(TDS[d,t,]) # sd
+  }
+}
+
+# 5th and 95th percentiles
+TDS_5 = matrix(0,7,8)
+TDS_95 = matrix(0,7,8)
+for(d in 1:7){
+  for(t in 1:8){
+    TDS_5[d,t] = quantile(TDS[d,t,], c(0.05)) # 5% CI
+    TDS_95[d,t] = quantile(TDS[d,t,], c(.95))  # 95% CI
+  }
+}
+
+## calculate layer depths/velocities of simulation means for main plot
+layer_depths_mean = as.data.frame(matrix(0,7,1))
+layer_velocity_mean = as.data.frame(matrix(0,7,1))
+for(j in 1:7){
+  layer_depths_mean[j,1] = mean(layer_depths_array[j,1,]) * -1
+  layer_velocity_mean[j,1] = mean(layer_velocity_array[j,1,])
+}
+
+## reshape layer_depths_mean for plotting
+layer_depths_mean = t.default(layer_depths_mean)
+
+## trim 8th layer of TDS_mean matrix for plotting
+TDS_mean = TDS_mean[1:7,]
+
+
+# compile into one df
+pl = data.frame(depth = layer_depths_mean, TDS1 = TDS_mean[,1], TDS2 = TDS_mean[,2],
+                TDS3 = TDS_mean[,3], TDS4 = TDS_mean[,4], TDS5 = TDS_mean[,5],
+                TDS6 = TDS_mean[,6], TDS7 = TDS_mean[,7], TDS8 = TDS_mean[,8],
+                U1 = TDS_95[,1], L1 = TDS_5[,1],
+                U2 = TDS_95[,2], L2 = TDS_5[,2],
+                U3 = TDS_95[,3], L3 = TDS_5[,3],
+                U4 = TDS_95[,4], L4 = TDS_5[,4],
+                U5 = TDS_95[,5], L5 = TDS_5[,5],
+                U6 = TDS_95[,6], L6 = TDS_5[,6],
+                U7 = TDS_95[,7], L7 = TDS_5[,7],
+                U8 = TDS_95[,8], L8 = TDS_5[,8])
+
+# make gif
+library(gganimate)
+temp <- select(pl, depth, TDS1:TDS8)
+temp2 <- tidyr::gather(temp, key, value, - depth)
+
+# data reshaping
+temp2 <- temp2 %>% 
+  mutate(t = as.numeric(substr(key, 4, 5))) 
+temp3 <- select(pl, depth, starts_with("U")) %>%
+  tidyr::gather(key, value, - depth) %>% 
+  mutate(t = as.numeric(substr(key, 2, 3))) %>% 
+  rename(p95 = value) %>% 
+  select(-key)
+temp4 <- select(pl, depth, starts_with("L")) %>% 
+  tidyr::gather(key, value, - depth) %>% 
+  mutate(t = as.numeric(substr(key, 2, 3))) %>% 
+  rename(p5 = value) %>% 
+  select(-key)
+temp5 <- left_join(temp3, temp4, by = c("depth", "t")) 
+temp6 <- left_join(temp5, temp2, by = c("depth", "t"))
+
+temp6$depth <- temp6$depth * 0.3048 # convert depth to m
+temp6$t     <- rep(seq(0, 350, 50), each = 7) # time from index to years
+
+# make the animation
+anim <- ggplot(temp6, aes(depth, value)) + 
+  geom_ribbon(aes(ymin = p5, ymax = p95), alpha = 0.4) +
+  geom_line(col = "red", size = 1) + 
+  coord_flip() +
+  theme_minimal(base_size = 14) +
+  labs(title = 'Time: {round(frame_time, 2)} yrs ({1960 + round(frame_time, 0)})', 
+       y = "TDS (mg/L)", x = "Depth (m)") + 
+  transition_time(t) + 
+  ease_aes("linear")
+
+anim_save("salinization.gif", anim) # save to root
+```
 
 
 
@@ -529,16 +624,16 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 <!-- # table setup -->
 <!-- tstep = 1 # time step of NDP -->
 <!-- table1 = data.frame("term" = c("Stream","R","Lake","BI","Sub","SW_D", -->
-<!--                                "SI","EC_mean", "EC_5","EC_95",  -->
+<!--                                "SI","EC_mean", "EC_5","EC_95", -->
 <!--                                "RWI_mean","RWI_5", "RWI_95"), -->
 <!--                     "mass" = c(mg_to_Mton(annual_fluxes[2,4]), mg_to_Mton(annual_fluxes[3,4]), -->
 <!--                                mg_to_Mton(annual_fluxes[4,4]), mg_to_Mton(annual_fluxes[5,4]), -->
 <!--                                mg_to_Mton(annual_fluxes[6,4]), SW_annual_mass, -->
 <!--                                mg_to_Mton(annual_fluxes[8,4]), -->
 <!--                                mg_to_Mton(EC_mean[tstep,1] * annual_fluxes[1,2]), -->
-<!--                                mg_to_Mton(EC_5[tstep,1] * annual_fluxes[1,2]),  -->
+<!--                                mg_to_Mton(EC_5[tstep,1] * annual_fluxes[1,2]), -->
 <!--                                mg_to_Mton(EC_95[tstep,1] * annual_fluxes[1,2]), -->
-<!--                                mg_to_Mton(RWI_mean),  -->
+<!--                                mg_to_Mton(RWI_mean), -->
 <!--                                mg_to_Mton(RWI_5), -->
 <!--                                mg_to_Mton(RWI_95))) -->
 <!-- table1 -->
@@ -548,17 +643,17 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 <!-- ## Plot 3: Average Vertical Groundwater Pore Velocity Profile -->
 <!-- ```{r Plot 3: Average Vertical Groundwater Pore Velocity Profile, warning=F, message=F} -->
 <!-- # organize data -->
-<!-- plot3data = data.frame(x = layer_velocity_mean[1:7,1],  -->
+<!-- plot3data = data.frame(x = layer_velocity_mean[1:7,1], -->
 <!--                   y = as.matrix(layer_depths_mean[1:7,1])) -->
-<!-- plot3 = ggplot(plot3data, aes(x = x, y = y)) +  -->
+<!-- plot3 = ggplot(plot3data, aes(x = x, y = y)) + -->
 <!--   geom_smooth(method="lm", se= FALSE, color = c("gray40"), formula = y ~ x) + -->
 <!--   geom_point(shape=16, cex=3) + -->
 <!--   xlab("averge linear pore velocity (ft/yr)") + -->
 <!--   ylab("depth below land surface") + -->
 <!--   theme_bw() + -->
 <!--   ggtitle("Mean Linear Pore Velocity") + -->
-<!--   theme(axis.text = element_text(size=16), axis.title = element_text(size=18)) +  -->
-<!--   theme(text=element_text(family="Times New Roman", size=18))  -->
+<!--   theme(axis.text = element_text(size=16), axis.title = element_text(size=18)) + -->
+<!--   theme(text=element_text(family="Times New Roman", size=18)) -->
 
 <!-- plot3 -->
 <!-- ``` -->
@@ -576,7 +671,7 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 <!--                         mg_to_Mton(annual_fluxes[4,4]), mg_to_Mton(annual_fluxes[5,4]), -->
 <!--                         mg_to_Mton(annual_fluxes[6,4]), SW_annual_mass, -->
 <!--                         mg_to_Mton(annual_fluxes[8,4])) -->
-<!--   table1[2,tstep] = mg_to_Mton(EC_median[tstep,1] * annual_fluxes[1,2])  -->
+<!--   table1[2,tstep] = mg_to_Mton(EC_median[tstep,1] * annual_fluxes[1,2]) -->
 <!--   table1[3,tstep] = mg_to_Mton(EC_5[tstep,1] * annual_fluxes[1,2]) -->
 <!--   table1[4,tstep] = mg_to_Mton(EC_95[tstep,1] * annual_fluxes[1,2]) -->
 <!--   #table1[4,tstep] = mg_to_Mton(RWI_mean) -->
@@ -595,14 +690,14 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 
 <!-- Mtons_to_metric_tons <- function(x){return(x * 907184.74)} -->
 
-<!-- mass_dat <- mass_dat %>%  -->
+<!-- mass_dat <- mass_dat %>% -->
 <!--   mutate(med = Mtons_to_metric_tons(med), -->
 <!--          p5  = Mtons_to_metric_tons(p5), -->
 <!--          p95 = Mtons_to_metric_tons(p95)) -->
 
 <!-- # plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step -->
 <!-- plot4 = ggplot(mass_dat, aes(x=time, y=med, fill=legend)) + -->
-<!--   geom_bar(position="dodge", stat="identity",  -->
+<!--   geom_bar(position="dodge", stat="identity", -->
 <!--            colour = "black", size=.3) + -->
 <!--   geom_errorbar(aes(ymin=p5, ymax=p95), -->
 <!--                 size=.3,    # thinner lines -->
@@ -612,10 +707,10 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 <!--   ylab("mass (Metric Tons)") + -->
 <!--   scale_fill_hue(name="", -->
 <!--                  breaks=c("A","B"), -->
-<!--                  labels=c("I, C, W, R, L, B",  -->
+<!--                  labels=c("I, C, W, R, L, B", -->
 <!--                           "N")) + -->
 <!--   #ggtitle("Average Annual Mass Loading in Entire System") + -->
-<!--   theme_minimal() +  -->
+<!--   theme_minimal() + -->
 <!--   scale_y_continuous() -->
 
 <!-- plot4 -->
@@ -663,12 +758,12 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 <!-- layer_depths_mean = t.default(layer_depths_mean) -->
 
 <!-- ## trim 8th layer of TDS_mean matrix for plotting -->
-<!-- TDS_mean = TDS_mean[1:7,]  -->
+<!-- TDS_mean = TDS_mean[1:7,] -->
 
 
 <!-- ## data frame of all variables to plot -->
 <!-- # pl = data.frame(depth = layer_depths_mean, TDS1 = TDS_mean[,1], TDS2 = TDS_mean[,2], -->
-<!-- #                 TDS3 = TDS_mean[,3], TDS4 = TDS_mean[,4], TDS5 = TDS_mean[,5],  -->
+<!-- #                 TDS3 = TDS_mean[,3], TDS4 = TDS_mean[,4], TDS5 = TDS_mean[,5], -->
 <!-- #                 TDS6 = TDS_mean[,6], TDS7 = TDS_mean[,7], TDS8 = TDS_mean[,8], -->
 <!-- #                 U1 = TDS_95[,1], L1 = TDS_5[,1], -->
 <!-- #                 U2 = TDS_95[,2], L2 = TDS_5[,2], -->
@@ -677,7 +772,7 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 <!-- #                 U5 = TDS_95[,5], L5 = TDS_5[,5], -->
 <!-- #                 U6 = TDS_95[,6], L6 = TDS_5[,6], -->
 <!-- #                 U7 = TDS_95[,7], L7 = TDS_5[,7], -->
-<!-- #                 U8 = TDS_95[,8], L8 = TDS_5[,8])  -->
+<!-- #                 U8 = TDS_95[,8], L8 = TDS_5[,8]) -->
 
 <!-- # For plotting both models in one graph, see MM_working_MC.Rmd -->
 <!-- pl = data.frame(depth = layer_depths_mean, TDS1 = TDS_mean[,1], TDS2 = TDS_mean[,2], -->
@@ -698,43 +793,43 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 <!-- ## 0 yrs -->
 <!-- p1 = ggplot(pl, aes(depth)) + -->
 <!--   geom_line(aes(y = pl$TDS1), color = 'red') + -->
-<!--   geom_ribbon(aes(ymin = pl$L1, ymax = pl$U1), alpha=.4) +  -->
+<!--   geom_ribbon(aes(ymin = pl$L1, ymax = pl$U1), alpha=.4) + -->
 <!--   aes(ymax = ymax, ymin = ymin) + -->
 <!--   ylab("TDS (mg/L)") + -->
-<!--   xlab("depth below land surface (ft.)")  +  -->
-<!--   ggtitle("0 years") +  -->
+<!--   xlab("depth below land surface (ft.)")  + -->
+<!--   ggtitle("0 years") + -->
 <!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
-<!--   theme_light() +  -->
-<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
-<!--   coord_flip() +  -->
+<!--   theme_light() + -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) + -->
+<!--   coord_flip() + -->
 <!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
 
 <!-- ## 50 yrs -->
 <!-- p2 = ggplot(pl, aes(depth)) + -->
 <!--   geom_line(aes(y = pl$TDS2), color = 'red') + -->
-<!--   geom_ribbon(aes(ymin = pl$L2, ymax = pl$U2), alpha=.4) +  -->
+<!--   geom_ribbon(aes(ymin = pl$L2, ymax = pl$U2), alpha=.4) + -->
 <!--   aes(ymax = ymax, ymin = ymin) + -->
 <!--   ylab("TDS (mg/L)") + -->
-<!--   xlab("depth below land surface (ft.)")  +  -->
-<!--   ggtitle("50 years") +  -->
+<!--   xlab("depth below land surface (ft.)")  + -->
+<!--   ggtitle("50 years") + -->
 <!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
-<!--   theme_light() +  -->
-<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
-<!--   coord_flip() +  -->
+<!--   theme_light() + -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) + -->
+<!--   coord_flip() + -->
 <!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
 
 <!-- ## 100 yrs -->
 <!-- p3 = ggplot(pl, aes(depth)) + -->
 <!--   geom_line(aes(y = pl$TDS3), color = 'red') + -->
-<!--   geom_ribbon(aes(ymin = pl$L3, ymax = pl$U3), alpha=.4) +  -->
+<!--   geom_ribbon(aes(ymin = pl$L3, ymax = pl$U3), alpha=.4) + -->
 <!--   aes(ymax = ymax, ymin = ymin) + -->
 <!--   ylab("TDS (mg/L)") + -->
-<!--   xlab("depth below land surface (ft.)")  +  -->
-<!--   ggtitle("100 years") +  -->
+<!--   xlab("depth below land surface (ft.)")  + -->
+<!--   ggtitle("100 years") + -->
 <!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
-<!--   theme_light() +  -->
-<!--   theme(text=element_text(size = 20)) +  -->
-<!--   coord_flip() +  -->
+<!--   theme_light() + -->
+<!--   theme(text=element_text(size = 20)) + -->
+<!--   coord_flip() + -->
 <!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
 
 <!-- # for comparison to data -->
@@ -754,71 +849,71 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 <!-- ## 150 yrs -->
 <!-- p4 = ggplot(pl, aes(depth)) + -->
 <!--   geom_line(aes(y = pl$TDS4), color = 'red') + -->
-<!--   geom_ribbon(aes(ymin = pl$L4, ymax = pl$U4), alpha=.4) +  -->
+<!--   geom_ribbon(aes(ymin = pl$L4, ymax = pl$U4), alpha=.4) + -->
 <!--   aes(ymax = ymax, ymin = ymin) + -->
 <!--   ylab("TDS (mg/L)") + -->
-<!--   xlab("depth below land surface (ft.)")  +  -->
-<!--   ggtitle("150 years") +  -->
+<!--   xlab("depth below land surface (ft.)")  + -->
+<!--   ggtitle("150 years") + -->
 <!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
-<!--   theme_light() +  -->
-<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
-<!--   coord_flip() +  -->
+<!--   theme_light() + -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) + -->
+<!--   coord_flip() + -->
 <!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
 
 <!-- ## 200 yrs -->
 <!-- p5 = ggplot(pl, aes(depth)) + -->
 <!--   geom_line(aes(y = pl$TDS5), color = 'red') + -->
-<!--   geom_ribbon(aes(ymin = pl$L5, ymax = pl$U5), alpha=.4) +  -->
+<!--   geom_ribbon(aes(ymin = pl$L5, ymax = pl$U5), alpha=.4) + -->
 <!--   aes(ymax = ymax, ymin = ymin) + -->
 <!--   ylab("TDS (mg/L)") + -->
-<!--   xlab("depth below land surface (ft.)")  +  -->
-<!--   ggtitle("200 years") +  -->
+<!--   xlab("depth below land surface (ft.)")  + -->
+<!--   ggtitle("200 years") + -->
 <!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
-<!--   theme_light() +  -->
-<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
-<!--   coord_flip() +  -->
+<!--   theme_light() + -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) + -->
+<!--   coord_flip() + -->
 <!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
 
 <!-- ## 250 yrs -->
 <!-- p6 = ggplot(pl, aes(depth)) + -->
 <!--   geom_line(aes(y = pl$TDS6), color = 'red') + -->
-<!--   geom_ribbon(aes(ymin = pl$L6, ymax = pl$U6), alpha=.4) +  -->
+<!--   geom_ribbon(aes(ymin = pl$L6, ymax = pl$U6), alpha=.4) + -->
 <!--   aes(ymax = ymax, ymin = ymin) + -->
 <!--   ylab("TDS (mg/L)") + -->
-<!--   xlab("depth below land surface (ft.)")  +  -->
-<!--   ggtitle("250 years") +  -->
+<!--   xlab("depth below land surface (ft.)")  + -->
+<!--   ggtitle("250 years") + -->
 <!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
-<!--   theme_light() +  -->
-<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
-<!--   coord_flip() +  -->
+<!--   theme_light() + -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) + -->
+<!--   coord_flip() + -->
 <!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
 
 <!-- ## 300 yrs -->
 <!-- p7 = ggplot(pl, aes(depth)) + -->
 <!--   geom_line(aes(y = pl$TDS7), color = 'red') + -->
-<!--   geom_ribbon(aes(ymin = pl$L7, ymax = pl$U7), alpha=.4) +  -->
+<!--   geom_ribbon(aes(ymin = pl$L7, ymax = pl$U7), alpha=.4) + -->
 <!--   aes(ymax = ymax, ymin = ymin) + -->
 <!--   ylab("TDS (mg/L)") + -->
-<!--   xlab("depth below land surface (ft.)")  +  -->
-<!--   ggtitle("300 years") +  -->
+<!--   xlab("depth below land surface (ft.)")  + -->
+<!--   ggtitle("300 years") + -->
 <!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
-<!--   theme_light() +  -->
-<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
-<!--   coord_flip() +  -->
+<!--   theme_light() + -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) + -->
+<!--   coord_flip() + -->
 <!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
 
 <!-- ## 350 yrs -->
 <!-- p8 = ggplot(pl, aes(depth)) + -->
 <!--   geom_line(aes(y = pl$TDS8), color = 'red') + -->
-<!--   geom_ribbon(aes(ymin = pl$L8, ymax = pl$U8), alpha=.4) +  -->
+<!--   geom_ribbon(aes(ymin = pl$L8, ymax = pl$U8), alpha=.4) + -->
 <!--   aes(ymax = ymax, ymin = ymin) + -->
 <!--   ylab("TDS (mg/L)") + -->
-<!--   xlab("depth below land surface (ft.)")  +  -->
-<!--   ggtitle("350 years") +  -->
+<!--   xlab("depth below land surface (ft.)")  + -->
+<!--   ggtitle("350 years") + -->
 <!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
-<!--   theme_light() +  -->
-<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
-<!--   coord_flip() +  -->
+<!--   theme_light() + -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) + -->
+<!--   coord_flip() + -->
 <!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
 
 <!-- # save -->
