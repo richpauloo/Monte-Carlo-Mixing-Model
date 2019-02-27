@@ -27,7 +27,10 @@ RZ = read.csv(file = "RZ.csv", stringsAsFactors = FALSE, header = TRUE)
 # Bring in boundary condition data from Tulare_well_stats.Rmd
 library(dplyr)
 boundary_dat <- readRDS("boundary_dat.rds")
-bd <- boundary_dat %>% dplyr::select(x,y) %>% mutate(x = abs(x)) %>% arrange(x) %>% as.matrix()
+bd <- boundary_dat %>% dplyr::select(x,y) %>% 
+  mutate(x = abs(x) * 3.28084) %>% # convert m to ft for model
+  arrange(x) %>% 
+  as.matrix()
 ```
 [^1]: Original C2VSim model files (R374) can be found at: <http://baydeltaoffice.water.ca.gov/modeling/hydrology/C2VSim/index_C2VSIM.cfm>
 
@@ -60,7 +63,7 @@ mg_to_Mton = function(a){
 
 ```{r boundary conditions, warning = F, message = F}
 # Rock water interactions
-Kang = 3000/mean(c(1719,2205)) # (Kang, 2016) 300 mg/L at 1719 ft. in Fresno co., 2205 ft. in Kern co.
+Kang       = 3000/mean(c(1719,2205)) # (Kang, 2016) 3000 mg/L at 1719 ft. in Fresno co., 2205 ft. in Kern co.
 Williamson = 2000/2500
 
 # velocity field from C2VSim
@@ -68,17 +71,17 @@ dv12 = 0.76106 # Darcy velocity between centroids of layers 1-2 (ft/yr)
 dv23 = -0.01772 # Darcy velocity between centroids of layers 2-3 (ft/yr)
 
 # C2VSim Groundwater budget (units = AF)
-DP = sum(GW$DP) # deep percolation
-Si = sum(GW$Si) # beginning storage
-Sf = sum(GW$Sf) # ending storage
-NDP = sum(GW$NDP) # net deep percolation
+DP     = sum(GW$DP) # deep percolation
+Si     = sum(GW$Si) # beginning storage
+Sf     = sum(GW$Sf) # ending storage
+NDP    = sum(GW$NDP) # net deep percolation
 Stream = sum(GW$Stream) # stream gain
-R = sum(GW$R) # recharge
-Lake = sum(GW$Lake) # lake gain
-BI = sum(GW$BI) # sum(GW$Si) boundary inflow
-Sub = sum(GW$Sub) # subsidence flow
-P = sum(GW$P) # GW pumping
-SI = sum(GW$Net.Subsurface.Inflow....) # subsurface inflow
+R      = sum(GW$R) # recharge
+Lake   = sum(GW$Lake) # lake gain
+BI     = sum(GW$BI) # sum(GW$Si) boundary inflow
+Sub    = sum(GW$Sub) # subsidence flow
+P      = sum(GW$P) # GW pumping
+SI     = sum(GW$Net.Subsurface.Inflow....) # subsurface inflow
 
 # spatial/temporal dimensions
 Dim = data.frame(subregion = seq(14,21,1), 
@@ -87,9 +90,9 @@ Dim = data.frame(subregion = seq(14,21,1),
                  thickness = c(1915.155, 1990.01, 1509.194, 1868.821, 
                                1904.244, 1715.117, 1969.524, 3244.262)) # feet: from C2VSim model
 
-Tot_SA = sum(Dim$SA) # total surface area (acres)
-V = Dim$SA * Dim$thickness # Volume (AF)
-Tot_V = af_to_L(sum(V)) # total volume (L)
+Tot_SA         = sum(Dim$SA) # total surface area (acres)
+V              = Dim$SA * Dim$thickness # Volume (AF)
+Tot_V          = af_to_L(sum(V)) # total volume (L)
 SA_w_thickness = sum(Dim$SA/Tot_SA*Dim$thickness) # surface area weighted thickness
 
 # time step length
@@ -98,12 +101,38 @@ t = 50 # years
 # length of C2VSim simulation
 l = 40 # years
 
+
+####################################################################################
+# salt concentration of natural SW and thus GWW from (Cismowski, 2006)
+# within report search for: Annual Salt Load (thousand tons/year)
+####################################################################################
+sw <- data.frame(term = c("sac","yolo","sjr"),
+                 ttons = c(1945, 405,922),
+                 taf_yr = c(16953,2980,3082))
+
+# concentration of delivered sw
+sw$c <- sw$ttons / sw$taf_yr
+sw$c <- sw$c * 9.072e+11 / 1.233e+9 # convert ktons to mg and thousand acre feet to L
+
+# volume weighted concetration
+sw <- sw %>% 
+  mutate(pv  = taf_yr / (sum(sw$taf_yr)), # percent volume
+         vwc = pv * c) # volume weighted concentration
+# sum(sw$vwc) # final concentration of surface water input
+
+# volume weighted concetration
+sw <- sw %>% 
+  mutate(pv  = taf_yr / (sum(sw$taf_yr)), # percent volume
+         vwc = pv * c) # volume weighted concentration
+gwc <- sum(sw$vwc) # final concentration of natural surface water and thus GW
+####################################################################################
+
 # C2VSim average annual fluxes from GW budget
 annual_fluxes = data.frame(term = c("NDP", "Stream", "R", "Lake", "BI", "Sub", "P", "SI"),
                            "L/yr" = c(af_to_L(NDP/l), af_to_L(Stream/l), af_to_L(R/l), 
                                       af_to_L(Lake/l), af_to_L(BI/l), af_to_L(Sub/l), 
                                       af_to_L(P/l), af_to_L(SI/l)))
-annual_fluxes$TDS = c(0,35,35,35,35,35,0,35) # TDS
+annual_fluxes$TDS = c(0,gwc,gwc,gwc,gwc,gwc,0,gwc) # TDS
 annual_fluxes$mass_flux = annual_fluxes$L.yr * annual_fluxes$TDS # mass flux (mg/yr)
 
 # Internal mass flux
@@ -113,16 +142,38 @@ internal_mf = (annual_fluxes[5,4] + annual_fluxes[6,4] + annual_fluxes[8,4])*t #
 top_mf = (annual_fluxes[2,4] + annual_fluxes[3,4] + annual_fluxes[4,4])*t # mg/50 yr 
 
 # Root Zone Budget (includes Agriculture, Urban, and Native Vegetation)
-I = sum(RZ$AG_INF) + sum(RZ$URB_INF) + sum(RZ$NAT_INF) # Net infiltration
+I  = sum(RZ$AG_INF) + sum(RZ$URB_INF) + sum(RZ$NAT_INF) # Net infiltration
 ET = sum(RZ$AG_ET) + sum(RZ$URB_ET) + sum(RZ$NAT_ET) # Net ET
 
 # Percentages
-pI = NDP/I # percentage of infiltration that becomes NDP
+pI   = NDP/I # percentage of infiltration that becomes NDP
 pGWP = P/I # Percentage of groundwater pumping in Total Applied Water
-pSW = 1 - pGWP # percentage of surface water diversions and reuse in Total Applied Water
+pSW  = 1 - pGWP # percentage of surface water diversions and reuse in Total Applied Water
 
 # Average Annual Surface Water TDS, volume, and mass flux
-TDS_SW = .38*((247.22540+254.26799)/2) + .62*(87.24187) # TDS of surface water
+# TDS_SW = .38*((247.22540+254.26799)/2) + .62*(87.24187) # TDS of surface water
+
+####################################################################################
+# salt concentration of SW imports from (Cismowski, 2006)
+# within report search for: Annual Salt Load (thousand tons/year)
+####################################################################################
+
+# period of record 1985 - 1994
+sw <- data.frame(term = c("swp","cvp"),
+                 ttons = c(1004, 900),
+                 taf_yr = c(2471,2328))
+
+# concentration of delivered sw
+sw$c <- sw$ttons / sw$taf_yr
+sw$c <- sw$c * 9.072e+11 / 1.233e+9 # convert ktons to mg and thousand acre feet to L
+
+# volume weighted concetration
+sw <- sw %>% 
+  mutate(pv  = taf_yr / (sum(sw$taf_yr)), # percent volume
+         vwc = pv * c) # volume weighted concentration
+TDS_SW <- sum(sw$vwc) # final concentration of surface water input
+####################################################################################
+
 V_SW = (I - P) / l # Average Annual SW diversion volume (AF/yr)
 SW_annual_mass = mg_to_Mton(af_to_L(V_SW) * TDS_SW) # Mton
 ```
@@ -135,39 +186,41 @@ N = 1000
 
 ## Initialize 3D output arrays 
 ```{r Initialize 3D output arrays, warning = F, message = F}
-TDS = array(0, dim=c(8,8,N)) # TDS array
-layer_depths_array = array(0, dim=c(8,1,N)) # layer depths array
+TDS                  = array(0, dim=c(8,8,N)) # TDS array
+layer_depths_array   = array(0, dim=c(8,1,N)) # layer depths array
 layer_velocity_array = array(0, dim=c(8,1,N)) # layer velocity array
-mass = array(0, dim=c(8,1,N)) # array of sum of masses per time step
-TDS_GWP = array(0, dim=c(8,1,N)) # array of TDS of pumped groundwater per time step
-TDS_AW = array(0, dim=c(8,1,N)) # array of TDS of applied water (SW+GW) per time step
-EC = array(0, dim=c(8,1,N)) # array of evaporative concentration of NDP per time step (TDS)
-NDP_mf = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
-RWI_cont = array(0, dim=c(8,1,N)) # array of Rock water interactions
-lay_vol = array(0, dim=c(8,1,N)) # array of layer volumes
+mass                 = array(0, dim=c(8,1,N)) # array of sum of masses per time step
+TDS_GWP              = array(0, dim=c(8,1,N)) # array of TDS of pumped groundwater per time step
+TDS_AW               = array(0, dim=c(8,1,N)) # array of TDS of applied water (SW+GW) per time step
+EC                   = array(0, dim=c(8,1,N)) # array of evaporative concentration of NDP per time step (TDS)
+NDP_mf               = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
+RWI_cont             = array(0, dim=c(8,1,N)) # array of Rock water interactions
+lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
 ```
 
 ## Compute all output  
 ```{r Compute all Output, warning = F, message = F}
+set.seed(23545) # ensure replicability
+
 for(k in 1:N){
 
   # Random Variables
-  n = runif(1, min = 0.25, max = 0.35) # porosity
-  pa = runif(1, min = 0.35, max = 0.50) # percent aquifer
+  n    = runif(1, min = 0.25, max = 0.35) # porosity
+  pa   = runif(1, min = 0.35, max = 0.50) # percent aquifer
   aVol = Tot_V * n * pa # saturated aquifer volume (L)
-  RWI = runif(1, min = Williamson, max = Kang)  # Rock water interactions (TDS/ft) 
+  RWI  = runif(1, min = Williamson, max = Kang)  # Rock water interactions (TDS/ft) 
   
   # velocity field from C2VSim
-  v12 = 0.76106/n # linear pore velocity between centroids of layers 1-2 (ft/yr)
-  v23 = -0.01772/n # linear pore velocity between centroids of layers 2-3 (ft/yr)
-  vel = c(v12,v23) # vector of velocities
+  v12    = 0.76106/n # linear pore velocity between centroids of layers 1-2 (ft/yr)
+  v23    = -0.01772/n # linear pore velocity between centroids of layers 2-3 (ft/yr)
+  vel    = c(v12,v23) # vector of velocities
   depths = c(-631.5,-2077) # C2VSim midpoints between layer centroids over which velcoity is calculated
-  vel = as.data.frame(cbind(vel,depths)) # bind vel and depth vectors into one data frame for analysis
-  lm = lm(vel$depths~vel$vel) # create a linear model between velocity and depth
+  vel    = as.data.frame(cbind(vel,depths)) # bind vel and depth vectors into one data frame for analysis
+  lm     = lm(vel$depths~vel$vel) # create a linear model between velocity and depth
   
   # vertical velocity profile
-  v = matrix(0,8,1) # initalize vector to hold computed velocities at various depths
-  b = matrix(0,8,1) # initalize vector to hold layer thicknesses, computed from groundwater velocity
+  v    = matrix(0,8,1) # initalize vector to hold computed velocities at various depths
+  b    = matrix(0,8,1) # initalize vector to hold layer thicknesses, computed from groundwater velocity
   v[1] = (0 + -coef(lm)[[1]]) / coef(lm)[[2]] # compute first velocity
   b[1] = -(v[1] * t) # compute first layer thickness
   
@@ -183,7 +236,7 @@ for(k in 1:N){
   
   # layer thickness (ft)
   b[8] = -(SA_w_thickness + sum(b[1:7]))
-  pb = abs(b)/SA_w_thickness # percentage of total thickness per layer
+  pb   = abs(b)/SA_w_thickness # percentage of total thickness per layer
   
   # layer volumes (L)
   lay_vol[,1,k] = aVol * pb # saturated volume of all layers (L)
@@ -199,7 +252,7 @@ for(k in 1:N){
 
   
   # Calculate the layer depths
-  layer_depths = matrix(0,8)
+  layer_depths    = matrix(0,8)
   layer_depths[1] = abs(b[1])
   for(i in 2:8){
     layer_depths[i,1] = abs(layer_depths[i-1,1]) + abs(b[i]) # vector of layer depths (ft)
@@ -212,256 +265,107 @@ for(k in 1:N){
   
   bc_match <- matrix(0, nrow = 8, ncol = 1)
   for(i in 1:nrow(layer_depths)){
-    temp <- layer_depths[i,1] - bd[,1]
+    temp  <- layer_depths[i,1] - bd[,1]
     index <- which.min(abs(temp))
     bc_match[i] = bd[index,2]
   }
   
   t0 = bc_match
   TDS[,1,k] = t0
-  # RWI
+  
+  # RWI == FALSE 
   RWI_cont[,1,k] = 0
   
+  # # RWI == TRUE
+  # # Initalize TDS array with baseline TDS
+  # t0 = layer_depths * RWI # inital TDS-depth profile from RWI
+  # TDS[,1,k] = t0
+  # # RWI
+  # RWI_cont[,1,k] = t0
 
   
   # Record layer depth/velocity for all simulations
-  layer_depths_array[,,k] = layer_depths
+  layer_depths_array[,,k]   = layer_depths
   layer_velocity_array[,,k] = v
   
 
   
   # Compute TDS for all layers and times
   for(j in 1:7){
+    
     # calculate mass flux of NDP
-    mass[j,1,k] = sum(TDS[1:7,j,k] * lay_vol[1:7,1,k]) # sum of mass in pumping layers 1-7 (mg)
+    mass[j,1,k]    = sum(TDS[1:7,j,k] * lay_vol[1:7,1,k]) # sum of mass in pumping layers 1-7 (mg)
     TDS_GWP[j,1,k] = mass[j,1,k]/sum(lay_vol[1:7,1,k]) # TDS of pumped GW
-    TDS_AW[j,1,k] = TDS_GWP[j,1,k] * pGWP + TDS_SW * pSW # TDS of applied water for irrigation
-    EC[j,1,k] = TDS_AW[j,1,k] * (1/pI) # TDS of NDP Evaporative concentration
-    NDP_mf[j,1,k] = EC[j,1,k] * annual_fluxes[1,2] # mass flux of NDP
+    TDS_AW[j,1,k]  = TDS_GWP[j,1,k] * pGWP + TDS_SW * pSW # TDS of applied water for irrigation
+    EC[j,1,k]      = TDS_AW[j,1,k] * (1/pI) # TDS of NDP Evaporative concentration
+    NDP_mf[j,1,k]  = EC[j,1,k] * annual_fluxes[1,2] # mass flux of NDP
     
     # TDS in layer 1
     TDS[1,j+1,k] = ((TDS[1,j,k]*lay_vol[1,1,k] + top_mf + NDP_mf[j,1,k]*t - TDS[1,j,k]*layer_fluxes[2,2]*t - 
-                       TDS[1,j,k]*lay_pump[1,1]*t + internal_mf*pb[1]) / lay_vol[1,1,k]) + RWI_cont[1,1,k]
+                     TDS[1,j,k]*lay_pump[1,1]*t + internal_mf*pb[1]) / lay_vol[1,1,k]) + RWI_cont[1,1,k]
+    
     # TDS in layers 2-7
     for(i in 2:7){
       TDS[i,j+1,k] = ((TDS[i,j,k]*lay_vol[i,1,k] + internal_mf*pb[i] + TDS[i-1,j,k]*layer_fluxes[i,2]*t -
-                         TDS[i,j,k]*lay_pump[i,1]*t - TDS[i,j,k]*layer_fluxes[i+1,2]*t) / lay_vol[i,1,k]) + 
+                       TDS[i,j,k]*lay_pump[i,1]*t - TDS[i,j,k]*layer_fluxes[i+1,2]*t) / lay_vol[i,1,k]) + 
         RWI_cont[i,1,k]
     }
   }
 }
-
 ```
 
-## Plot 1: Groundwater Salinization Evolution: 0-350 yrs
-```{r Plot 1: Groundwater Salinization Evolution: 0-350 yrs, message=F, warning=F}
-# for Plot 1:
-TDS_mean = as.data.frame(matrix(0,8,8))
-for(i in 1:8){
-  for(j in 1:8){
-    TDS_mean[i,j] = mean(TDS[i,j,])
-  }
+## Plot 1: time, layer depth, TDS, simulation df
+```{r}
+# gather appraoch 
+library(tidyr)
+
+# make depth-time array
+ld   <- lapply(1:1000, function(x){return(layer_depths_array[1:7,,x])}) # all layer depths in a list
+td   <- lapply(1:1000, function(x){return(TDS[1:7,,x])}) # tds as a list of matrices
+ldtd <- lapply(1:1000, function(x){return(data.frame(cbind(ld[[x]], td[[x]])))}) # bind
+
+for(i in 1:1000){
+  colnames(ldtd[[i]]) <- c("d", "0", "50","100","150","200","250","300","350")
+  ldtd[[i]] <- gather(ldtd[[i]], time, tds, -d) # wide to long
+  ldtd[[i]]$sim <- i # add simulation
 }
 
-sd.top = matrix(0,7,8)
-sd.bottom = matrix(0,7,8)
-for(d in 1:7){
-  for(t in 1:8){
-    sd.top[d,t] = TDS_mean[d,t] - sd(TDS[d,t,]) # sd
-    sd.bottom[d,t] = TDS_mean[d,t] + sd(TDS[d,t,]) # sd
-  }
-}
+df <- bind_rows(ldtd)
+df$sim <- as.factor(df$sim)
+df$time <- factor(paste0("t = ", df$time), 
+                  levels = paste0("t = ", 
+                                  c("0", "50","100","150","200","250","300","350")))
+df$d <- df$d * 0.3048       # ft to meters
 
-TDS_5 = matrix(0,7,8)
-TDS_95 = matrix(0,7,8)
-for(d in 1:7){
-  for(t in 1:8){
-    TDS_5[d,t] = quantile(TDS[d,t,], c(0.05)) # 5% CI
-    TDS_95[d,t] = quantile(TDS[d,t,], c(.95))  # 95% CI
-  }
-}
-
-## calculate layer depths/velocities of simulation means for main plot
-layer_depths_mean = as.data.frame(matrix(0,7,1))
-layer_velocity_mean = as.data.frame(matrix(0,7,1))
-for(j in 1:7){
-  layer_depths_mean[j,1] = mean(layer_depths_array[j,1,]) * -1
-  layer_velocity_mean[j,1] = mean(layer_velocity_array[j,1,])
-}
-
-## reshape layer_depths_mean for plotting
-layer_depths_mean = t.default(layer_depths_mean)
-
-## trim 8th layer of TDS_mean matrix for plotting
-TDS_mean = TDS_mean[1:7,] 
+ll <- c(
+  't = 0'  ="t = 0 yrs (1960)",
+  't = 50' ="t = 50 yrs (2010)",
+  't = 100'="t = 100 yrs (2060)",
+  't = 150'="t = 150 yrs (2110)",
+  't = 200'="t = 200 yrs (2160)",
+  't = 250'="t = 250 yrs (2210)",
+  't = 300'="t = 300 yrs (2260)",
+  't = 350'="t = 350 yrs (2310)"
+)
 
 
-## data frame of all variables to plot
-# pl = data.frame(depth = layer_depths_mean, TDS1 = TDS_mean[,1], TDS2 = TDS_mean[,2],
-#                 TDS3 = TDS_mean[,3], TDS4 = TDS_mean[,4], TDS5 = TDS_mean[,5], 
-#                 TDS6 = TDS_mean[,6], TDS7 = TDS_mean[,7], TDS8 = TDS_mean[,8],
-#                 U1 = TDS_95[,1], L1 = TDS_5[,1],
-#                 U2 = TDS_95[,2], L2 = TDS_5[,2],
-#                 U3 = TDS_95[,3], L3 = TDS_5[,3],
-#                 U4 = TDS_95[,4], L4 = TDS_5[,4],
-#                 U5 = TDS_95[,5], L5 = TDS_5[,5],
-#                 U6 = TDS_95[,6], L6 = TDS_5[,6],
-#                 U7 = TDS_95[,7], L7 = TDS_5[,7],
-#                 U8 = TDS_95[,8], L8 = TDS_5[,8]) 
 
-# For plotting both models in one graph, see MM_working_MC.Rmd
-pl = data.frame(depth = layer_depths_mean, TDS1 = TDS_mean[,1], TDS2 = TDS_mean[,2],
-                TDS3 = TDS_mean[,3], TDS4 = TDS_mean[,4], TDS5 = TDS_mean[,5],
-                TDS6 = TDS_mean[,6], TDS7 = TDS_mean[,7], TDS8 = TDS_mean[,8],
-                U1 = TDS_95[,1], L1 = TDS_5[,1],
-                U2 = TDS_95[,2], L2 = TDS_5[,2],
-                U3 = TDS_95[,3], L3 = TDS_5[,3],
-                U4 = TDS_95[,4], L4 = TDS_5[,4],
-                U5 = TDS_95[,5], L5 = TDS_5[,5],
-                U6 = TDS_95[,6], L6 = TDS_5[,6],
-                U7 = TDS_95[,7], L7 = TDS_5[,7],
-                U8 = TDS_95[,8], L8 = TDS_5[,8])
+p <- df %>% filter(time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 350") & sim %in% 251:500) %>% 
+  ggplot(aes(-d, tds)) + 
+  geom_line(aes(color = sim), alpha = 0.2) +
+  geom_smooth(se = FALSE, color = "red") + 
+  coord_flip(ylim = c(0, 11000)) +
+  scale_color_grey() + 
+  guides(color = FALSE) + 
+  theme_minimal() + 
+  facet_wrap(~time, labeller = as_labeller(ll)) +
+  scale_y_continuous(breaks = c(1000, 5000, 10000), labels = c('1,000', '5,000', '10,000')) + 
+  labs(x = "Depth (m)", y = "TDS (mg/L)")
 
-ymax = 10000 # maximum TDS concentration (mg/L) to display on y axis
-ymin = 0
-
-## 0 yrs
-p1 = ggplot(pl, aes(depth)) +
-  geom_line(aes(y = pl$TDS1), color = 'red') +
-  geom_ribbon(aes(ymin = pl$L1, ymax = pl$U1), alpha=.4) + 
-  aes(ymax = ymax, ymin = ymin) +
-  ylab("TDS (mg/L)") +
-  xlab("depth below land surface (ft.)")  + 
-  ggtitle("0 years") + 
-  geom_hline(yintercept = 1000, linetype = "longdash") +
-  theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 20)) + 
-  coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
-
-## 50 yrs
-p2 = ggplot(pl, aes(depth)) +
-  geom_line(aes(y = pl$TDS2), color = 'red') +
-  geom_ribbon(aes(ymin = pl$L2, ymax = pl$U2), alpha=.4) + 
-  aes(ymax = ymax, ymin = ymin) +
-  ylab("TDS (mg/L)") +
-  xlab("depth below land surface (ft.)")  + 
-  ggtitle("50 years") + 
-  geom_hline(yintercept = 1000, linetype = "longdash") +
-  theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 20)) + 
-  coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
-
-## 100 yrs
-p3 = ggplot(pl, aes(depth)) +
-  geom_line(aes(y = pl$TDS3), color = 'red') +
-  geom_ribbon(aes(ymin = pl$L3, ymax = pl$U3), alpha=.4) + 
-  aes(ymax = ymax, ymin = ymin) +
-  ylab("TDS (mg/L)") +
-  xlab("depth below land surface (ft.)")  + 
-  ggtitle("100 years") + 
-  geom_hline(yintercept = 1000, linetype = "longdash") +
-  theme_light() + 
-  theme(text=element_text(size = 20)) + 
-  coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
-
-# for comparison to data
-# p3 = ggplot(pl, aes(depth)) +
-#   geom_line(aes(y = pl$TDS3), color = 'red') +
-#   geom_ribbon(aes(ymin = pl$L3, ymax = pl$U3), alpha=.4) +
-#   aes(ymax = ymax) +
-#   ylab("TDS (mg/L)") +
-#   xlab("depth below land surface (ft.)")  +
-#   ggtitle("100 years") +
-#   geom_hline(yintercept = 1000, linetype = "longdash") +
-#   theme(axis.text=element_text(size=14)) +
-#   #theme(text=element_text(family="Times New Roman", size = 20)) +
-#   coord_flip(ylim = c(100,10000), xlim= c(-1000,-200)) +
-#   scale_y_log10(breaks = c(0,10,100,1000,10000,100000), labels = comma(c(0,10,100,1000,10000,100000)), limits = c(10,100000))
-
-## 150 yrs
-p4 = ggplot(pl, aes(depth)) +
-  geom_line(aes(y = pl$TDS4), color = 'red') +
-  geom_ribbon(aes(ymin = pl$L4, ymax = pl$U4), alpha=.4) + 
-  aes(ymax = ymax, ymin = ymin) +
-  ylab("TDS (mg/L)") +
-  xlab("depth below land surface (ft.)")  + 
-  ggtitle("150 years") + 
-  geom_hline(yintercept = 1000, linetype = "longdash") +
-  theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 20)) + 
-  coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
-
-## 200 yrs
-p5 = ggplot(pl, aes(depth)) +
-  geom_line(aes(y = pl$TDS5), color = 'red') +
-  geom_ribbon(aes(ymin = pl$L5, ymax = pl$U5), alpha=.4) + 
-  aes(ymax = ymax, ymin = ymin) +
-  ylab("TDS (mg/L)") +
-  xlab("depth below land surface (ft.)")  + 
-  ggtitle("200 years") + 
-  geom_hline(yintercept = 1000, linetype = "longdash") +
-  theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 20)) + 
-  coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
-
-## 250 yrs
-p6 = ggplot(pl, aes(depth)) +
-  geom_line(aes(y = pl$TDS6), color = 'red') +
-  geom_ribbon(aes(ymin = pl$L6, ymax = pl$U6), alpha=.4) + 
-  aes(ymax = ymax, ymin = ymin) +
-  ylab("TDS (mg/L)") +
-  xlab("depth below land surface (ft.)")  + 
-  ggtitle("250 years") + 
-  geom_hline(yintercept = 1000, linetype = "longdash") +
-  theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 20)) + 
-  coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
-
-## 300 yrs
-p7 = ggplot(pl, aes(depth)) +
-  geom_line(aes(y = pl$TDS7), color = 'red') +
-  geom_ribbon(aes(ymin = pl$L7, ymax = pl$U7), alpha=.4) + 
-  aes(ymax = ymax, ymin = ymin) +
-  ylab("TDS (mg/L)") +
-  xlab("depth below land surface (ft.)")  + 
-  ggtitle("300 years") + 
-  geom_hline(yintercept = 1000, linetype = "longdash") +
-  theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 20)) + 
-  coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
-
-## 350 yrs
-p8 = ggplot(pl, aes(depth)) +
-  geom_line(aes(y = pl$TDS8), color = 'red') +
-  geom_ribbon(aes(ymin = pl$L8, ymax = pl$U8), alpha=.4) + 
-  aes(ymax = ymax, ymin = ymin) +
-  ylab("TDS (mg/L)") +
-  xlab("depth below land surface (ft.)")  + 
-  ggtitle("350 years") + 
-  geom_hline(yintercept = 1000, linetype = "longdash") +
-  theme_light() + 
-  theme(text=element_text(family="Times New Roman", size = 20)) + 
-  coord_flip() + 
-  scale_y_continuous(label=comma, breaks = c(1000,5000,10000))
-
-# save
-for(i in 1:8){
-  ggsave(get(paste0("p",i)), file = paste0("p",i,".png"), dpi = 300, height = 6, width = 8)
-}
-
-## arrange p1 - p8 into one plot
-#p <- grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8, ncol=3, nrow=3, vp=viewport(width=0.95, height=0.95))
-
-#ggsave("p_no_RWI.PNG", p, height = 8.5, width = 11, units = "in", dpi = 300)
-#ggsave("p3_no_RWI.PNG", p3, height = 8.5, width = 11, units = "in", dpi = 300)
+ggsave(p, filename = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/p_sim.pdf", 
+       device = cairo_pdf, height = 5, width = 7)
 ```
+
 
 ## Plot 2: Compare concentrations of GW, TAW, NDP
 ```{r Plot 2: Compare concentrations of GW, TAW, NDP}
@@ -469,6 +373,7 @@ for(i in 1:8){
 GWP_mean = as.data.frame(matrix(0,7,1))
 AW_mean = as.data.frame(matrix(0,7,1))
 EC_mean = as.data.frame(matrix(0,7,1))
+EC_median = as.data.frame(matrix(0,7,1))
 GWP_5 = as.data.frame(matrix(0,7,1))
 AW_5 = as.data.frame(matrix(0,7,1))
 EC_5 = as.data.frame(matrix(0,7,1))
@@ -479,6 +384,7 @@ for(i in 1:7){
   GWP_mean[i,1] = mean(TDS_GWP[i,1,])
   AW_mean[i,1] = mean(TDS_AW[i,1,])
   EC_mean[i,1] = mean(EC[i,1,])
+  EC_median[i,1] = median(EC[i,1,])
   GWP_5[i,1] = quantile(TDS_GWP[i,1,], c(0.05))
   GWP_95[i,1] = quantile(TDS_GWP[i,1,], c(0.95))
   AW_5[i,1] = quantile(TDS_AW[i,1,], c(0.05))
@@ -489,36 +395,105 @@ for(i in 1:7){
 
 ## compile stats for TDS of pumped GW, Total Applied Water (GW+SW), and Evaporative concentration of NDP
 EC_dat = data.frame("legend"=rep(c("A","B","C"), each=7),
-                    "time" = factor(seq(50,350,50)),
-                    "mean" = rbind(GWP_mean, AW_mean, EC_mean),
-                    "5 CI" = rbind(GWP_5, AW_5, EC_5),
-                    "95 CI" = rbind(GWP_95, AW_95, EC_95))
-colnames(EC_dat) = c("legend","time","mean","5 CI", "95 CI")
+                    "time" = factor(seq(0,300,50)),
+                    "mean" = rbind(GWP_mean, AW_mean, EC_median),
+                    "p5" = rbind(GWP_5, AW_5, EC_5),
+                    "p95" = rbind(GWP_95, AW_95, EC_95))
+colnames(EC_dat) = c("legend","time","mean","p5", "p95")
 
 # plot
-plot2 = ggplot(EC_dat, aes(x=time, y=mean, fill=legend)) +
+p2 <- ggplot(EC_dat, aes(x=time, y=mean, fill=legend)) +
   geom_bar(position=position_dodge(), stat="identity", 
-           colour = "black", size=.3) +
-  geom_errorbar(aes(ymin=EC_dat$`5 CI`, ymax=EC_dat$`95 CI`),
+           colour = "black", size=.3,
+           alpha = 0.7) +
+  geom_errorbar(aes(ymin=EC_dat$p5, ymax=EC_dat$p95),
                 size=.3,    # thinner lines
                 width=.2,                    # Width of the error bars
                 position=position_dodge(.9)) +
   xlab("Time (yrs)") +
   ylab("TDS (mg/L)") +
-  scale_fill_hue(name="",
+  scale_y_continuous(labels = comma) +
+  scale_fill_viridis_d(name="",
                  breaks=c("A","B","C"),
                  labels=c("Pumped Groundwater", 
                           "Total Applied Water", 
                           "Net Deep Percolation")) +
-  ggtitle("Concentration of pumped GW, TAW, and NDP") +
-  theme_bw() + scale_y_continuous(labels = comma) + 
-  theme(text=element_text(family="Times New Roman", size=18)) +
-  theme(legend.position = "bottom", legend.text = element_text(size=12)) +
-  theme(axis.text = element_text(size=16), axis.title = element_text(size=18))
+  theme_minimal() +
+  theme(legend.position = c(0.22, 0.75))
 
-plot2
-#ggsave("plot2.PNG", plot2, height= 4, width = 7, dpi = 300)
+# save
+ggsave("p_ec.pdf", p2, height= 4, width = 7, device = cairo_pdf)
 ```
+
+
+# Plot 3: Salt Budget for Water Budget terms and NDP
+```{r}
+Mtons_to_metric_tons <- function(x){return(x * 907184.74)}
+
+## non:constant mass: extract all GW pumping TDS and convert to mass
+gwp <- vector("list", length = 7)
+
+for(i in 1:7){
+  gwp[[i]] <- data.frame(TDS_GWP[i, 1, ], t = i, type = "GWP")
+}
+
+gwp <- dplyr::bind_rows(gwp)
+colnames(gwp) <- c("c","t", "type")
+gwp <- gwp %>% 
+  mutate(m = Mtons_to_metric_tons(mg_to_Mton(c * annual_fluxes[7,2])))
+
+# constant mass: surface water and allother budget terms
+
+# surface water
+swm <- Mtons_to_metric_tons(SW_annual_mass)
+
+# all other budget terms
+all_else <- Mtons_to_metric_tons(mg_to_Mton(sum(annual_fluxes[c(2,3,4,5,6,8),4])))
+
+# combine into one df
+df1 <- data.frame(m = rep(c(swm, all_else), each = 7), 
+                  t = rep(1:7, times = 2), 
+                  type = rep(c("surface_water_import", "all_else"), each = 7)) 
+df2 <- select(gwp, m, t, type) 
+df2 <- df2 %>% 
+  group_by(t) %>% 
+  summarise(median = median(m), p5 = quantile(m, 0.05), p95 = quantile(m, 0.95))
+
+df1$p5  <- NA
+df1$p95 <- NA
+df2 <- df2 %>% rename(m = median) %>% mutate(type = "gwp") %>% select(m, t, type, p5, p95)
+
+df3 <- rbind.data.frame(df1, df2)
+df3$t <- rep(seq(0,300, 50), times = 3) # format times
+df3$type <- factor(rep(c("Surface Water Diversions", "I, C, W, R, L, B", "Pumped Groundwater"), each = 7), # format labels
+                   levels = c("I, C, W, R, L, B", "Surface Water Diversions", "Pumped Groundwater"))
+
+# plot
+p3 <- ggplot(df3, aes(factor(t), m, fill = type)) +
+  geom_bar(position = position_dodge(), stat = "identity", 
+           colour = "black", size=.3,
+           alpha = 0.7) +
+  geom_errorbar(aes(ymin = p5, ymax = p95),
+                size=.3,    # thinner lines
+                width=.2,   # Width of the error bars
+                position=position_dodge(.9)) +
+  scale_fill_viridis_d("Water Budget Term", option = "E") +
+  theme_minimal() +
+  theme(legend.position = c(0.22, 0.75)) +
+  labs(x = "Time", y = "Annual Mass (Metric Tons)")
+
+ggsave("p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf)
+```
+
+
+
+
+
+
+
+
+
+
 
 ## Table 1: Mass loading into entire GW system from various water budget terms and sources (Mtons)
 ```{r Table 1: Mass loading into entire GW system from various water budget terms and sources (Mtons), warning=F, message=F}
@@ -564,6 +539,10 @@ plot3 = ggplot(plot3data, aes(x = x, y = y)) +
 plot3
 ```
 
+
+
+
+
 ## Plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step
 ```{r Plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step}
 ## calculate annual mass loading in entire system from RWI and non-RWI sources per time step
@@ -572,59 +551,264 @@ for(tstep in 1:7){
   table1[1,tstep] = sum(mg_to_Mton(annual_fluxes[2,4]), mg_to_Mton(annual_fluxes[3,4]),
                         mg_to_Mton(annual_fluxes[4,4]), mg_to_Mton(annual_fluxes[5,4]),
                         mg_to_Mton(annual_fluxes[6,4]), SW_annual_mass,
-                        mg_to_Mton(annual_fluxes[8,4]),
-                        mg_to_Mton(EC_mean[tstep,1] * annual_fluxes[1,2])) 
-  table1[2,tstep] = sum(mg_to_Mton(annual_fluxes[2,4]), mg_to_Mton(annual_fluxes[3,4]),
-                        mg_to_Mton(annual_fluxes[4,4]), mg_to_Mton(annual_fluxes[5,4]),
-                        mg_to_Mton(annual_fluxes[6,4]), SW_annual_mass,
-                        mg_to_Mton(annual_fluxes[8,4]),
-                        mg_to_Mton(EC_mean[tstep,1] * annual_fluxes[1,2])) - 
-                            ((mg_to_Mton(EC_mean[tstep,1] * annual_fluxes[1,2])) - (mg_to_Mton(EC_5[tstep,1] * annual_fluxes[1,2])))
-  table1[3,tstep] = sum(mg_to_Mton(annual_fluxes[2,4]), mg_to_Mton(annual_fluxes[3,4]),
-                        mg_to_Mton(annual_fluxes[4,4]), mg_to_Mton(annual_fluxes[5,4]),
-                        mg_to_Mton(annual_fluxes[6,4]), SW_annual_mass,
-                        mg_to_Mton(annual_fluxes[8,4]),
-                        mg_to_Mton(EC_mean[tstep,1] * annual_fluxes[1,2])) + 
-                            ((mg_to_Mton(EC_95[tstep,1] * annual_fluxes[1,2])) - (mg_to_Mton(EC_mean[tstep,1] * annual_fluxes[1,2])))
-  table1[4,tstep] = mg_to_Mton(RWI_mean)
+                        mg_to_Mton(annual_fluxes[8,4]))
+  table1[2,tstep] = mg_to_Mton(EC_median[tstep,1] * annual_fluxes[1,2]) 
+  table1[3,tstep] = mg_to_Mton(EC_5[tstep,1] * annual_fluxes[1,2])
+  table1[4,tstep] = mg_to_Mton(EC_95[tstep,1] * annual_fluxes[1,2])
+  #table1[4,tstep] = mg_to_Mton(RWI_mean)
 }
 
 table1 = as.data.frame(table1)
-rownames(table1) = c('NON-RWI mean','NON-RWI 5 CI', 'NON-RWI 95 CI',
-                     'RWI mean')
-colnames(table1) = paste(seq(50,350,50), "yrs", " ")
+rownames(table1) = c('water_budget_terms','evaporite_median', 'evaporite_5', 'evaporite_95')
+colnames(table1) = paste0(seq(50,350,50), " yrs")
 table1 = t.data.frame(table1)
 
 mass_dat = data.frame("legend"=rep(c("A","B"), each=7),
-                    "time" = factor(seq(50,350,50)),
-                    "mean" = c(table1[,1], table1[,4]),
-                    "5 CI" = c(table1[,2], rep(0,7)),
-                    "95 CI" = c(table1[,3], rep(0,7)))
-colnames(mass_dat) = c("legend","time","mean","5 CI", "95 CI")
+                    "time" = factor(rep(seq(50,350,50), times = 2)),
+                    "med" = c(table1[,1], table1[,2]),
+                    "p5" = c(rep(0,7), table1[,3]),
+                    "p95" = c(rep(0,7), table1[,4]))
 
+Mtons_to_metric_tons <- function(x){return(x * 907184.74)}
+
+mass_dat <- mass_dat %>% 
+  mutate(med = Mtons_to_metric_tons(med),
+         p5  = Mtons_to_metric_tons(p5),
+         p95 = Mtons_to_metric_tons(p95))
 
 # plot 4: Annual mass loading in entire system from RWI and non-RWI sources per time step
-plot4 = ggplot(mass_dat, aes(x=time, y=mean, fill=legend)) +
+plot4 = ggplot(mass_dat, aes(x=time, y=med, fill=legend)) +
   geom_bar(position="dodge", stat="identity", 
            colour = "black", size=.3) +
-  geom_errorbar(aes(ymin=mass_dat$`5 CI`, ymax=mass_dat$`95 CI`),
+  geom_errorbar(aes(ymin=p5, ymax=p95),
                 size=.3,    # thinner lines
-                width=.2,                    # Width of the error bars
+                width=.2,   # Width of the error bars
                 position=position_dodge(.9)) +
   xlab("Time (yrs)") +
-  ylab("mass (Million Tons)") +
+  ylab("mass (Metric Tons)") +
   scale_fill_hue(name="",
                  breaks=c("A","B"),
-                 labels=c("Water Budget + EC of NDP", 
-                          "Rock Water Interactions")) +
-  ggtitle("Annual Mass Loading in Entire System") +
-  theme_bw() + scale_y_continuous(labels = comma) + 
-  theme(text=element_text(family="Times New Roman", size=18)) +
-  theme(legend.position = "bottom", legend.text = element_text(size=16)) +
-  theme(axis.text = element_text(size=16), axis.title = element_text(size=18))
+                 labels=c("I, C, W, R, L, B", 
+                          "N")) +
+  #ggtitle("Average Annual Mass Loading in Entire System") +
+  theme_minimal() + 
+  scale_y_continuous()
 
 plot4
 ```
+
+
+
+<!-- ## Plot 1: Groundwater Salinization Evolution: 0-350 yrs -->
+<!-- ```{r Plot 1: Groundwater Salinization Evolution: 0-350 yrs, message=F, warning=F} -->
+<!-- # for Plot 1: -->
+<!-- TDS_mean = as.data.frame(matrix(0,8,8)) -->
+<!-- for(i in 1:8){ -->
+<!--   for(j in 1:8){ -->
+<!--     TDS_mean[i,j] = mean(TDS[i,j,]) -->
+<!--   } -->
+<!-- } -->
+
+<!-- sd.top = matrix(0,7,8) -->
+<!-- sd.bottom = matrix(0,7,8) -->
+<!-- for(d in 1:7){ -->
+<!--   for(t in 1:8){ -->
+<!--     sd.top[d,t] = TDS_mean[d,t] - sd(TDS[d,t,]) # sd -->
+<!--     sd.bottom[d,t] = TDS_mean[d,t] + sd(TDS[d,t,]) # sd -->
+<!--   } -->
+<!-- } -->
+
+<!-- TDS_5 = matrix(0,7,8) -->
+<!-- TDS_95 = matrix(0,7,8) -->
+<!-- for(d in 1:7){ -->
+<!--   for(t in 1:8){ -->
+<!--     TDS_5[d,t] = quantile(TDS[d,t,], c(0.05)) # 5% CI -->
+<!--     TDS_95[d,t] = quantile(TDS[d,t,], c(.95))  # 95% CI -->
+<!--   } -->
+<!-- } -->
+
+<!-- ## calculate layer depths/velocities of simulation means for main plot -->
+<!-- layer_depths_mean = as.data.frame(matrix(0,7,1)) -->
+<!-- layer_velocity_mean = as.data.frame(matrix(0,7,1)) -->
+<!-- for(j in 1:7){ -->
+<!--   layer_depths_mean[j,1] = mean(layer_depths_array[j,1,]) * -1 -->
+<!--   layer_velocity_mean[j,1] = mean(layer_velocity_array[j,1,]) -->
+<!-- } -->
+
+<!-- ## reshape layer_depths_mean for plotting -->
+<!-- layer_depths_mean = t.default(layer_depths_mean) -->
+
+<!-- ## trim 8th layer of TDS_mean matrix for plotting -->
+<!-- TDS_mean = TDS_mean[1:7,]  -->
+
+
+<!-- ## data frame of all variables to plot -->
+<!-- # pl = data.frame(depth = layer_depths_mean, TDS1 = TDS_mean[,1], TDS2 = TDS_mean[,2], -->
+<!-- #                 TDS3 = TDS_mean[,3], TDS4 = TDS_mean[,4], TDS5 = TDS_mean[,5],  -->
+<!-- #                 TDS6 = TDS_mean[,6], TDS7 = TDS_mean[,7], TDS8 = TDS_mean[,8], -->
+<!-- #                 U1 = TDS_95[,1], L1 = TDS_5[,1], -->
+<!-- #                 U2 = TDS_95[,2], L2 = TDS_5[,2], -->
+<!-- #                 U3 = TDS_95[,3], L3 = TDS_5[,3], -->
+<!-- #                 U4 = TDS_95[,4], L4 = TDS_5[,4], -->
+<!-- #                 U5 = TDS_95[,5], L5 = TDS_5[,5], -->
+<!-- #                 U6 = TDS_95[,6], L6 = TDS_5[,6], -->
+<!-- #                 U7 = TDS_95[,7], L7 = TDS_5[,7], -->
+<!-- #                 U8 = TDS_95[,8], L8 = TDS_5[,8])  -->
+
+<!-- # For plotting both models in one graph, see MM_working_MC.Rmd -->
+<!-- pl = data.frame(depth = layer_depths_mean, TDS1 = TDS_mean[,1], TDS2 = TDS_mean[,2], -->
+<!--                 TDS3 = TDS_mean[,3], TDS4 = TDS_mean[,4], TDS5 = TDS_mean[,5], -->
+<!--                 TDS6 = TDS_mean[,6], TDS7 = TDS_mean[,7], TDS8 = TDS_mean[,8], -->
+<!--                 U1 = TDS_95[,1], L1 = TDS_5[,1], -->
+<!--                 U2 = TDS_95[,2], L2 = TDS_5[,2], -->
+<!--                 U3 = TDS_95[,3], L3 = TDS_5[,3], -->
+<!--                 U4 = TDS_95[,4], L4 = TDS_5[,4], -->
+<!--                 U5 = TDS_95[,5], L5 = TDS_5[,5], -->
+<!--                 U6 = TDS_95[,6], L6 = TDS_5[,6], -->
+<!--                 U7 = TDS_95[,7], L7 = TDS_5[,7], -->
+<!--                 U8 = TDS_95[,8], L8 = TDS_5[,8]) -->
+
+<!-- ymax = 10000 # maximum TDS concentration (mg/L) to display on y axis -->
+<!-- ymin = 0 -->
+
+<!-- ## 0 yrs -->
+<!-- p1 = ggplot(pl, aes(depth)) + -->
+<!--   geom_line(aes(y = pl$TDS1), color = 'red') + -->
+<!--   geom_ribbon(aes(ymin = pl$L1, ymax = pl$U1), alpha=.4) +  -->
+<!--   aes(ymax = ymax, ymin = ymin) + -->
+<!--   ylab("TDS (mg/L)") + -->
+<!--   xlab("depth below land surface (ft.)")  +  -->
+<!--   ggtitle("0 years") +  -->
+<!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
+<!--   theme_light() +  -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
+<!--   coord_flip() +  -->
+<!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
+
+<!-- ## 50 yrs -->
+<!-- p2 = ggplot(pl, aes(depth)) + -->
+<!--   geom_line(aes(y = pl$TDS2), color = 'red') + -->
+<!--   geom_ribbon(aes(ymin = pl$L2, ymax = pl$U2), alpha=.4) +  -->
+<!--   aes(ymax = ymax, ymin = ymin) + -->
+<!--   ylab("TDS (mg/L)") + -->
+<!--   xlab("depth below land surface (ft.)")  +  -->
+<!--   ggtitle("50 years") +  -->
+<!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
+<!--   theme_light() +  -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
+<!--   coord_flip() +  -->
+<!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
+
+<!-- ## 100 yrs -->
+<!-- p3 = ggplot(pl, aes(depth)) + -->
+<!--   geom_line(aes(y = pl$TDS3), color = 'red') + -->
+<!--   geom_ribbon(aes(ymin = pl$L3, ymax = pl$U3), alpha=.4) +  -->
+<!--   aes(ymax = ymax, ymin = ymin) + -->
+<!--   ylab("TDS (mg/L)") + -->
+<!--   xlab("depth below land surface (ft.)")  +  -->
+<!--   ggtitle("100 years") +  -->
+<!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
+<!--   theme_light() +  -->
+<!--   theme(text=element_text(size = 20)) +  -->
+<!--   coord_flip() +  -->
+<!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
+
+<!-- # for comparison to data -->
+<!-- # p3 = ggplot(pl, aes(depth)) + -->
+<!-- #   geom_line(aes(y = pl$TDS3), color = 'red') + -->
+<!-- #   geom_ribbon(aes(ymin = pl$L3, ymax = pl$U3), alpha=.4) + -->
+<!-- #   aes(ymax = ymax) + -->
+<!-- #   ylab("TDS (mg/L)") + -->
+<!-- #   xlab("depth below land surface (ft.)")  + -->
+<!-- #   ggtitle("100 years") + -->
+<!-- #   geom_hline(yintercept = 1000, linetype = "longdash") + -->
+<!-- #   theme(axis.text=element_text(size=14)) + -->
+<!-- #   #theme(text=element_text(family="Times New Roman", size = 20)) + -->
+<!-- #   coord_flip(ylim = c(100,10000), xlim= c(-1000,-200)) + -->
+<!-- #   scale_y_log10(breaks = c(0,10,100,1000,10000,100000), labels = comma(c(0,10,100,1000,10000,100000)), limits = c(10,100000)) -->
+
+<!-- ## 150 yrs -->
+<!-- p4 = ggplot(pl, aes(depth)) + -->
+<!--   geom_line(aes(y = pl$TDS4), color = 'red') + -->
+<!--   geom_ribbon(aes(ymin = pl$L4, ymax = pl$U4), alpha=.4) +  -->
+<!--   aes(ymax = ymax, ymin = ymin) + -->
+<!--   ylab("TDS (mg/L)") + -->
+<!--   xlab("depth below land surface (ft.)")  +  -->
+<!--   ggtitle("150 years") +  -->
+<!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
+<!--   theme_light() +  -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
+<!--   coord_flip() +  -->
+<!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
+
+<!-- ## 200 yrs -->
+<!-- p5 = ggplot(pl, aes(depth)) + -->
+<!--   geom_line(aes(y = pl$TDS5), color = 'red') + -->
+<!--   geom_ribbon(aes(ymin = pl$L5, ymax = pl$U5), alpha=.4) +  -->
+<!--   aes(ymax = ymax, ymin = ymin) + -->
+<!--   ylab("TDS (mg/L)") + -->
+<!--   xlab("depth below land surface (ft.)")  +  -->
+<!--   ggtitle("200 years") +  -->
+<!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
+<!--   theme_light() +  -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
+<!--   coord_flip() +  -->
+<!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
+
+<!-- ## 250 yrs -->
+<!-- p6 = ggplot(pl, aes(depth)) + -->
+<!--   geom_line(aes(y = pl$TDS6), color = 'red') + -->
+<!--   geom_ribbon(aes(ymin = pl$L6, ymax = pl$U6), alpha=.4) +  -->
+<!--   aes(ymax = ymax, ymin = ymin) + -->
+<!--   ylab("TDS (mg/L)") + -->
+<!--   xlab("depth below land surface (ft.)")  +  -->
+<!--   ggtitle("250 years") +  -->
+<!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
+<!--   theme_light() +  -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
+<!--   coord_flip() +  -->
+<!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
+
+<!-- ## 300 yrs -->
+<!-- p7 = ggplot(pl, aes(depth)) + -->
+<!--   geom_line(aes(y = pl$TDS7), color = 'red') + -->
+<!--   geom_ribbon(aes(ymin = pl$L7, ymax = pl$U7), alpha=.4) +  -->
+<!--   aes(ymax = ymax, ymin = ymin) + -->
+<!--   ylab("TDS (mg/L)") + -->
+<!--   xlab("depth below land surface (ft.)")  +  -->
+<!--   ggtitle("300 years") +  -->
+<!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
+<!--   theme_light() +  -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
+<!--   coord_flip() +  -->
+<!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
+
+<!-- ## 350 yrs -->
+<!-- p8 = ggplot(pl, aes(depth)) + -->
+<!--   geom_line(aes(y = pl$TDS8), color = 'red') + -->
+<!--   geom_ribbon(aes(ymin = pl$L8, ymax = pl$U8), alpha=.4) +  -->
+<!--   aes(ymax = ymax, ymin = ymin) + -->
+<!--   ylab("TDS (mg/L)") + -->
+<!--   xlab("depth below land surface (ft.)")  +  -->
+<!--   ggtitle("350 years") +  -->
+<!--   geom_hline(yintercept = 1000, linetype = "longdash") + -->
+<!--   theme_light() +  -->
+<!--   theme(text=element_text(family="Times New Roman", size = 20)) +  -->
+<!--   coord_flip() +  -->
+<!--   scale_y_continuous(label=comma, breaks = c(1000,5000,10000)) -->
+
+<!-- # save -->
+<!-- # for(i in 1:8){ -->
+<!-- #   ggsave(get(paste0("p",i)), file = paste0("p",i,".png"), dpi = 300, height = 6, width = 8) -->
+<!-- # } -->
+
+<!-- ## arrange p1 - p8 into one plot -->
+<!-- #p <- grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8, ncol=3, nrow=3, vp=viewport(width=0.95, height=0.95)) -->
+
+<!-- #ggsave("p_no_RWI.PNG", p, height = 8.5, width = 11, units = "in", dpi = 300) -->
+<!-- #ggsave("p3_no_RWI.PNG", p3, height = 8.5, width = 11, units = "in", dpi = 300) -->
+<!-- ``` -->
+
 
 # Appendix
 ![](/Users/richpauloo/Documents/GitHub/MCMM/Monte-Carlo-Mixing-Model/Tulare_model_domain.PNG)  
