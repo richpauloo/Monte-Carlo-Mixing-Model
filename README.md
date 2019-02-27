@@ -1,6 +1,6 @@
 # Mixing Cell Model of Solute Transport in the Tulare Basin, California  
 
-created July 7, 2017 by [Rich Pauloo](richpauloo@gmail.com) at the University of California Davis   
+Created July 7, 2017 by Rich Pauloo at the University of California Davis   
 
 
 ![Groundwater TDS-depth profile across a grid of timesteps is an output of the mixing model.](salinization.gif)  
@@ -12,7 +12,7 @@ created July 7, 2017 by [Rich Pauloo](richpauloo@gmail.com) at the University of
 
 1. Clone this repository  
 2. Ensure you have [R](https://www.r-project.org/) and [RStudio](https://www.rstudio.com/) installed on your machine.  
-3. Open MCMM_no_RWI.Rmd in Studio. An R Markdown (`.Rmd`) file is a notebook version of an R file ((more details here)[https://rmarkdown.rstudio.com/]), and must be run in RStudio.   
+3. Open MCMM_no_RWI.Rmd in Studio. An R Markdown (`.Rmd`) file is a notebook version of an R file ([more details here](https://rmarkdown.rstudio.com/)), and must be run in RStudio.   
 4. Run the code to evaluate the model.  
 
 
