@@ -18,11 +18,14 @@ Created July 7, 2017 by Rich Pauloo at the University of California Davis
 
 ## Contents
 
-The model depends on 4 input files   
+The model depends on 4 input files, found in `data`  
  - `boundary_dat.rds` - initial TDS-depth profile at $t_0$  
  - `GW.csv` - C2VSim 40 year groundwater budget  
  - `LB.csv` - C2VSim 40 year Land Zone budget  
  - `RZ.csv` - C2VSim 40 year Root Zone budget  
+ 
+Results are summarized into 3 plots and printed by the model as PDF files into `results`. To obtain the actual arrays of model output, it is necessary to run the model to bring these objects into memory.  
+
  
 ***  
 
