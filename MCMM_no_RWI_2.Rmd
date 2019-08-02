@@ -206,16 +206,20 @@ lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
 set.seed(23545) # ensure replicability
 
 run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
-TDS                  = array(0, dim=c(8,8,N)) # TDS array
-layer_depths_array   = array(0, dim=c(8,1,N)) # layer depths array
-layer_velocity_array = array(0, dim=c(8,1,N)) # layer velocity array
-mass                 = array(0, dim=c(8,1,N)) # array of sum of masses per time step
-TDS_GWP              = array(0, dim=c(8,1,N)) # array of TDS of pumped groundwater per time step
-TDS_AW               = array(0, dim=c(8,1,N)) # array of TDS of applied water (SW+GW) per time step
-EC                   = array(0, dim=c(8,1,N)) # array of evaporative concentration of NDP per time step (TDS)
-NDP_mf               = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
-RWI_cont             = array(0, dim=c(8,1,N)) # array of Rock water interactions
-lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
+  
+  # set up model arrays
+  TDS                  = array(0, dim=c(8,8,N)) # TDS array
+  layer_depths_array   = array(0, dim=c(8,1,N)) # layer depths array
+  layer_velocity_array = array(0, dim=c(8,1,N)) # layer velocity array
+  mass                 = array(0, dim=c(8,1,N)) # array of sum of masses per time step
+  TDS_GWP              = array(0, dim=c(8,1,N)) # array of TDS of pumped groundwater per time step
+  TDS_AW               = array(0, dim=c(8,1,N)) # array of TDS of applied water (SW+GW) per time step
+  EC                   = array(0, dim=c(8,1,N)) # array of evaporative concentration of NDP per time step (TDS)
+  NDP_mf               = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
+  RWI_cont             = array(0, dim=c(8,1,N)) # array of Rock water interactions
+  lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
+  
+  # loop over N realizations
   for(k in 1:N){
     
     # Random Variables
@@ -291,19 +295,13 @@ lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
     t0 = bc_match
     TDS[,1,k] = t0
     
+    # RWI == FALSE : no rock-water interactions
     if(RWI_on == FALSE){RWI_cont[,1,k] = 0}
-    # RWI == FALSE 
-    #RWI_cont[,1,k] = 0
-    
+
     # # RWI == TRUE
-    # # Initalize TDS array with baseline TDS
     if(RWI_on == TRUE){
-      #TDS[,1,k] = layer_depths # inital TDS-depth profile
-      RWI_cont[,1,k] = abs(b) * RWI # add RWI cont
+      RWI_cont[,1,k] = abs(b) * RWI # add RWI cont proportional to volume, depth
     }
-    # TDS[,1,k] = layer_depths # inital TDS-depth profile
-    # RWI_cont[,1,k] = abs(b) * RWI # add RWI cont
-  
     
     # Record layer depth/velocity for all simulations
     layer_depths_array[,,k]   = layer_depths
@@ -322,46 +320,68 @@ lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
       EC[j,1,k]      = TDS_AW[j,1,k] * (1/pI) # TDS of NDP Evaporative concentration
       NDP_mf[j,1,k]  = EC[j,1,k] * annual_fluxes[1,2] # mass flux of NDP
       
-      # TDS in layer 1
-      TDS[1,j+1,k] = ((TDS[1,j,k]*lay_vol[1,1,k] + top_mf + NDP_mf[j,1,k]*t - TDS[1,j,k]*layer_fluxes[2,2]*t - 
-                       TDS[1,j,k]*lay_pump[1,1]*t + internal_mf*pb[1]) / lay_vol[1,1,k]) #+ RWI_cont[1,1,k] 
+      # TDS in layer 1 is...
+      # initial mass, PLUS
+      # top down mass flux, PLUS
+      # internal mass flux, PLUS
+      # mass from NDP, MINUS
+      # fluxes passed out of layer, MINUS
+      # Pumping... ALL DIVIDED BY
+      # the Volume of layer 1   
+      TDS[1,j+1,k] = ((TDS[1,j,k]*lay_vol[1,1,k] +       
+                       top_mf + +                        
+                       internal_mf*pb[1] +              
+                       NDP_mf[j,1,k]*t -                 
+                       TDS[1,j,k]*layer_fluxes[2,2]*t -  
+                       TDS[1,j,k]*lay_pump[1,1]*t) /     
+                        
+                       lay_vol[1,1,k])                  
       
-      # TDS in layers 2-7
+      # TDS in layers 2-7 is...
+      # initial mass, PLUS
+      # internal mass flux, PLUS  
+      # fluxes passes into layers, MINUS  
+      # Pumping, MINUS
+      # fluxes passed out of layers, ALL DIVDED BY  
+      # the layer volume
       for(i in 2:7){
-        TDS[i,j+1,k] = ((TDS[i,j,k]*lay_vol[i,1,k] + internal_mf*pb[i] + TDS[i-1,j,k]*layer_fluxes[i,2]*t -
-                         TDS[i,j,k]*lay_pump[i,1]*t - TDS[i,j,k]*layer_fluxes[i+1,2]*t) / lay_vol[i,1,k]) #+ 
-          RWI_cont[i,1,k] 
-        
+        TDS[i,j+1,k] = ((TDS[i,j,k]*lay_vol[i,1,k] +         
+                         internal_mf*pb[i] +                 
+                         TDS[i-1,j,k]*layer_fluxes[i,2]*t -   
+                         TDS[i,j,k]*lay_pump[i,1]*t -        
+                         TDS[i,j,k]*layer_fluxes[i+1,2]*t) / 
+                         
+                         lay_vol[i,1,k])                     
+          
       }
       
-      # baseline correction from rock water interactions when RWI not present
+      # baseline correction from rock water interactions 
       mean_bl <- mean((TDS[,j,k] - TDS[,j+1,k])[(j+1):7])
       
       TDS[,j+1,k][(j+1):7] <- TDS[,j+1,k][(j+1):7] + (TDS[,j,k] - TDS[,j+1,k])[(j+1):7]
       TDS[1:j,j+1,k] <- TDS[1:j,j+1,k] + mean_bl
       
-      if(RWI_on == FALSE){
-        RWI_cont[j,1,k] <- mean_bl # save RWI for non-RWI case
-      }
-      
+      # when RWI == TRUE, add the RWI zero order source term
       if(RWI_on == TRUE){
-        TDS[,j+1,k] <- TDS[,j+1,k] + RWI_cont[,,k] # save RWI for non-RWI case
+        TDS[,j+1,k] <- TDS[,j+1,k] + RWI_cont[,,k] 
       }
       
     }
     
   }
   
-  res <- list(TDS = TDS,
-              layer_depths_array = layer_depths_array,
+  # compile model arrays to output
+  res <- list(TDS                  = TDS,
+              layer_depths_array   = layer_depths_array,
               layer_velocity_array = layer_velocity_array,
-              mass = mass,
-              TDS_GWP = TDS_GWP,
-              TDS_AW = TDS_AW,
-              EC = EC,
-              NDP_mf = NDP_mf,
-              RWI_cont = RWI_cont,
-              lay_vol = lay_vol) 
+              mass                 = mass,
+              TDS_GWP              = TDS_GWP,
+              TDS_AW               = TDS_AW,
+              EC                   = EC,
+              NDP_mf               = NDP_mf,
+              RWI_cont             = RWI_cont,
+              lay_vol              = lay_vol) 
+  
   return(res)
           
 }
@@ -817,7 +837,7 @@ temp6       <- filter(temp6, t <= 300)
 anim <- ggplot(temp6, aes(depth, value)) + 
   geom_ribbon(aes(ymin = p5, ymax = p95), alpha = 0.4) +
   geom_line(col = "red", size = 1) + 
-  geom_hline(yintercept = 1000, linetype = "dashed") +
+  #geom_hline(yintercept = 1000, linetype = "dashed") +
   coord_flip() +
   #annotate(geom = "text", x = -250, y = 1600, label = "TDS upper MCL") +
   #geom_curve(data = data.frame(x1=-260,x2=-300,y1=1600,y2=1050),
