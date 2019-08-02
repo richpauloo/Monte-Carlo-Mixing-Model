@@ -149,7 +149,7 @@ I  = sum(RZ$AG_INF) + sum(RZ$URB_INF) + sum(RZ$NAT_INF) # Net infiltration
 ET = sum(RZ$AG_ET) + sum(RZ$URB_ET) + sum(RZ$NAT_ET) # Net ET
 
 # Percentages
-pI   = NDP/I # percentage of infiltration that becomes NDP
+#pI   = NDP/I # percentage of infiltration that becomes NDP
 pGWP = P/I # Percentage of groundwater pumping in Total Applied Water
 pSW  = 1 - pGWP # percentage of surface water diversions and reuse in Total Applied Water
 
@@ -205,116 +205,186 @@ lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
 ```{r Compute all Output, warning = F, message = F}
 set.seed(23545) # ensure replicability
 
-for(k in 1:N){
-
-  # Random Variables
-  n    = runif(1, min = 0.25, max = 0.35) # porosity
-  pa   = runif(1, min = 0.35, max = 0.50) # percent aquifer
-  aVol = Tot_V * n * pa # saturated aquifer volume (L)
-  RWI  = runif(1, min = Williamson, max = Kang)  # Rock water interactions (TDS/ft)
-
-  
-  # velocity field from C2VSim
-  v12    = 0.76106/n # linear pore velocity between centroids of layers 1-2 (ft/yr)
-  v23    = -0.01772/n # linear pore velocity between centroids of layers 2-3 (ft/yr)
-  vel    = c(v12,v23) # vector of velocities
-  depths = c(-631.5,-2077) # C2VSim midpoints between layer centroids over which velcoity is calculated
-  vel    = as.data.frame(cbind(vel,depths)) # bind vel and depth vectors into one data frame for analysis
-  lm     = lm(vel$depths~vel$vel) # create a linear model between velocity and depth
-  
-  # vertical velocity profile
-  v    = matrix(0,8,1) # initalize vector to hold computed velocities at various depths
-  b    = matrix(0,8,1) # initalize vector to hold layer thicknesses, computed from groundwater velocity
-  v[1] = (0 + -coef(lm)[[1]]) / coef(lm)[[2]] # compute first velocity
-  b[1] = -(v[1] * t) # compute first layer thickness
-  
-  # compute all remaining layer velocities and thicknesses
-  for(i in 1:7){
-    v[i+1] = (sum(b) -coef(lm)[[1]]) / coef(lm)[[2]]
-    b[i+1] = -(v[i+1] * t)
-  }
-  
-  # Vertical Flux per layer (L/yr)
-  Q = v * n * pa * Tot_SA * 43560 * 28.3168 # L/yr
-  layer_fluxes = cbind(v, Q) # units of "ft/yr" and "L/yr" respectively
-  
-  # layer thickness (ft)
-  b[8] = -(SA_w_thickness + sum(b[1:7]))
-  pb   = abs(b)/SA_w_thickness # percentage of total thickness per layer
-  
-  # layer volumes (L)
-  lay_vol[,1,k] = aVol * pb # saturated volume of all layers (L)
-  
-
-  
-  # Calculate Pumping in each layer
-  lay_pump = matrix(0,8,1)
-  for(i in 1:7){
-    lay_pump[i,1] = b[i]/sum(b) * annual_fluxes[7,2] # proportion pumping from each layer (L/yr)
-  }
-  
-
-  
-  # Calculate the layer depths
-  layer_depths    = matrix(0,8)
-  layer_depths[1] = abs(b[1])
-  for(i in 2:8){
-    layer_depths[i,1] = abs(layer_depths[i-1,1]) + abs(b[i]) # vector of layer depths (ft)
-  }
-  
-
-  
-  # Initalize TDS array with baseline TDS
-  #t0 = layer_depths * RWI # inital TDS-depth profile from RWI
-  
-  bc_match <- matrix(0, nrow = 8, ncol = 1)
-  for(i in 1:nrow(layer_depths)){
-    temp  <- layer_depths[i,1] - bd[,1]
-    index <- which.min(abs(temp))
-    bc_match[i] = bd[index,2]
-  }
-  
-  t0 = bc_match
-  TDS[,1,k] = t0
-  
-  # RWI == FALSE 
-  RWI_cont[,1,k] = 0
-  
-  # # RWI == TRUE
-  # # Initalize TDS array with baseline TDS
-  #TDS[,1,k] = layer_depths # inital TDS-depth profile
-  #RWI_cont[,1,k] = layer_depths * RWI # add RWI cont
-
-  
-  # Record layer depth/velocity for all simulations
-  layer_depths_array[,,k]   = layer_depths
-  layer_velocity_array[,,k] = v
-  
-
-  
-  # Compute TDS for all layers and times
-  for(j in 1:7){
+run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
+TDS                  = array(0, dim=c(8,8,N)) # TDS array
+layer_depths_array   = array(0, dim=c(8,1,N)) # layer depths array
+layer_velocity_array = array(0, dim=c(8,1,N)) # layer velocity array
+mass                 = array(0, dim=c(8,1,N)) # array of sum of masses per time step
+TDS_GWP              = array(0, dim=c(8,1,N)) # array of TDS of pumped groundwater per time step
+TDS_AW               = array(0, dim=c(8,1,N)) # array of TDS of applied water (SW+GW) per time step
+EC                   = array(0, dim=c(8,1,N)) # array of evaporative concentration of NDP per time step (TDS)
+NDP_mf               = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
+RWI_cont             = array(0, dim=c(8,1,N)) # array of Rock water interactions
+lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
+  for(k in 1:N){
     
-    # calculate mass flux of NDP
-    mass[j,1,k]    = sum(TDS[1:7,j,k] * lay_vol[1:7,1,k]) # sum of mass in pumping layers 1-7 (mg)
-    TDS_GWP[j,1,k] = mass[j,1,k]/sum(lay_vol[1:7,1,k]) # TDS of pumped GW
-    TDS_AW[j,1,k]  = TDS_GWP[j,1,k] * pGWP + TDS_SW * pSW # TDS of applied water for irrigation
-    EC[j,1,k]      = TDS_AW[j,1,k] * (1/pI) # TDS of NDP Evaporative concentration
-    NDP_mf[j,1,k]  = EC[j,1,k] * annual_fluxes[1,2] # mass flux of NDP
+    # Random Variables
+    n    = runif(1, min = porosity[1], max = porosity[2]) # porosity
+    pa   = runif(1, min = percent_aq[1], max = percent_aq[2]) # percent aquifer
+    aVol = Tot_V * n * pa # saturated aquifer volume (L)
+    pI   = runif(1, min = 1-irg_eff[2], max = 1-irg_eff[1]) # irrigation efficiency
+    RWI  = runif(1, min = Williamson, max = Kang)  # Rock water interactions (TDS/ft)
+  
     
-    # TDS in layer 1
-    TDS[1,j+1,k] = ((TDS[1,j,k]*lay_vol[1,1,k] + top_mf + NDP_mf[j,1,k]*t - TDS[1,j,k]*layer_fluxes[2,2]*t - 
-                     TDS[1,j,k]*lay_pump[1,1]*t + internal_mf*pb[1]) / lay_vol[1,1,k]) + RWI_cont[1,1,k]
+    # velocity field from C2VSim
+    v12    = 0.76106/n # linear pore velocity between centroids of layers 1-2 (ft/yr)
+    v23    = -0.01772/n # linear pore velocity between centroids of layers 2-3 (ft/yr)
+    vel    = c(v12,v23) # vector of velocities
+    #0.5*(mean(dd$c1) + mean(dd$c2)); 0.5*(mean(dd$c2) + mean(dd$c3))
+    #c(447,924)#
+    depths = c(-631.5,-2077) # C2VSim midpoints between layer centroids over which velcoity is calculated
+    vel    = as.data.frame(cbind(vel,depths)) # bind vel and depth vectors into one data frame for analysis
+    l      = lm(depths~vel, data = vel) # create a linear model between velocity and depth
     
-    # TDS in layers 2-7
-    for(i in 2:7){
-      TDS[i,j+1,k] = ((TDS[i,j,k]*lay_vol[i,1,k] + internal_mf*pb[i] + TDS[i-1,j,k]*layer_fluxes[i,2]*t -
-                       TDS[i,j,k]*lay_pump[i,1]*t - TDS[i,j,k]*layer_fluxes[i+1,2]*t) / lay_vol[i,1,k]) + 
-        RWI_cont[i,1,k]
+    # vertical velocity profile
+    v    = matrix(0,8,1) # initalize vector to hold computed velocities at various depths
+    b    = matrix(0,8,1) # initalize vector to hold layer thicknesses, computed from groundwater velocity
+    v[1] = (0 + -coef(l)[[1]]) / coef(l)[[2]] # compute first velocity
+    b[1] = -(v[1] * t) # compute first layer thickness
+    
+    # compute all remaining layer velocities and thicknesses
+    for(i in 1:7){
+      v[i+1] = (sum(b) -coef(l)[[1]]) / coef(l)[[2]]
+      b[i+1] = -(v[i+1] * t)
     }
+    
+    # Vertical Flux per layer (L/yr)
+    Q = v * n * pa * Tot_SA * 43560 * 28.3168 # L/yr
+    layer_fluxes = cbind(v, Q) # units of "ft/yr" and "L/yr" respectively
+    
+    # layer thickness (ft)
+    b[8] = -(SA_w_thickness + sum(b[1:7]))
+    pb   = abs(b)/SA_w_thickness # percentage of total thickness per layer
+    
+    # layer volumes (L)
+    lay_vol[,1,k] = aVol * pb # saturated volume of all layers (L)
+    
+  
+    
+    # Calculate Pumping in each layer
+    lay_pump = matrix(0,8,1)
+    for(i in 1:7){
+      lay_pump[i,1] = b[i]/sum(b) * annual_fluxes[7,2] # proportion pumping from each layer (L/yr)
+    }
+    
+  
+    
+    # Calculate the layer depths
+    layer_depths    = matrix(0,8)
+    layer_depths[1] = abs(b[1])
+    for(i in 2:8){
+      layer_depths[i,1] = abs(layer_depths[i-1,1]) + abs(b[i]) # vector of layer depths (ft)
+    }
+    
+  
+    
+    # Initalize TDS array with baseline TDS
+    #t0 = layer_depths * RWI # inital TDS-depth profile from RWI
+    
+    bc_match <- matrix(0, nrow = 8, ncol = 1)
+    for(i in 1:nrow(layer_depths)){
+      temp  <- layer_depths[i,1] - bd[,1]
+      index <- which.min(abs(temp))
+      bc_match[i] = bd[index,2]
+    }
+    
+    t0 = bc_match
+    TDS[,1,k] = t0
+    
+    if(RWI_on == FALSE){RWI_cont[,1,k] = 0}
+    # RWI == FALSE 
+    #RWI_cont[,1,k] = 0
+    
+    # # RWI == TRUE
+    # # Initalize TDS array with baseline TDS
+    if(RWI_on == TRUE){
+      #TDS[,1,k] = layer_depths # inital TDS-depth profile
+      RWI_cont[,1,k] = abs(b) * RWI # add RWI cont
+    }
+    # TDS[,1,k] = layer_depths # inital TDS-depth profile
+    # RWI_cont[,1,k] = abs(b) * RWI # add RWI cont
+  
+    
+    # Record layer depth/velocity for all simulations
+    layer_depths_array[,,k]   = layer_depths
+    layer_velocity_array[,,k] = v
+    
+    # layer basline mass
+    lbm = bc_match * lay_vol[,,k]
+    
+    # Compute TDS for all layers and times
+    for(j in 1:7){
+      
+      # calculate mass flux of NDP
+      mass[j,1,k]    = sum(TDS[1:7,j,k] * lay_vol[1:7,1,k]) # sum of mass in pumping layers 1-7 (mg)
+      TDS_GWP[j,1,k] = mass[j,1,k]/sum(lay_vol[1:7,1,k]) # TDS of pumped GW
+      TDS_AW[j,1,k]  = TDS_GWP[j,1,k] * pGWP + TDS_SW * pSW # TDS of applied water for irrigation
+      EC[j,1,k]      = TDS_AW[j,1,k] * (1/pI) # TDS of NDP Evaporative concentration
+      NDP_mf[j,1,k]  = EC[j,1,k] * annual_fluxes[1,2] # mass flux of NDP
+      
+      # TDS in layer 1
+      TDS[1,j+1,k] = ((TDS[1,j,k]*lay_vol[1,1,k] + top_mf + NDP_mf[j,1,k]*t - TDS[1,j,k]*layer_fluxes[2,2]*t - 
+                       TDS[1,j,k]*lay_pump[1,1]*t + internal_mf*pb[1]) / lay_vol[1,1,k]) #+ RWI_cont[1,1,k] 
+      
+      # TDS in layers 2-7
+      for(i in 2:7){
+        TDS[i,j+1,k] = ((TDS[i,j,k]*lay_vol[i,1,k] + internal_mf*pb[i] + TDS[i-1,j,k]*layer_fluxes[i,2]*t -
+                         TDS[i,j,k]*lay_pump[i,1]*t - TDS[i,j,k]*layer_fluxes[i+1,2]*t) / lay_vol[i,1,k]) #+ 
+          RWI_cont[i,1,k] 
+        
+      }
+      
+      # baseline correction from rock water interactions when RWI not present
+      mean_bl <- mean((TDS[,j,k] - TDS[,j+1,k])[(j+1):7])
+      
+      TDS[,j+1,k][(j+1):7] <- TDS[,j+1,k][(j+1):7] + (TDS[,j,k] - TDS[,j+1,k])[(j+1):7]
+      TDS[1:j,j+1,k] <- TDS[1:j,j+1,k] + mean_bl
+      
+      if(RWI_on == FALSE){
+        RWI_cont[j,1,k] <- mean_bl # save RWI for non-RWI case
+      }
+      
+      if(RWI_on == TRUE){
+        TDS[,j+1,k] <- TDS[,j+1,k] + RWI_cont[,,k] # save RWI for non-RWI case
+      }
+      
+    }
+    
   }
+  
+  res <- list(TDS = TDS,
+              layer_depths_array = layer_depths_array,
+              layer_velocity_array = layer_velocity_array,
+              mass = mass,
+              TDS_GWP = TDS_GWP,
+              TDS_AW = TDS_AW,
+              EC = EC,
+              NDP_mf = NDP_mf,
+              RWI_cont = RWI_cont,
+              lay_vol = lay_vol) 
+  return(res)
+          
 }
 ```
+
+
+```{r}
+# with RWI
+z1 <- run_model(porosity = c(0.25, 0.35),
+                percent_aq = c(0.35, 0.50),
+                irg_eff = c(0.55, 0.85),
+                RWI_on = TRUE, 
+                N = 1000)
+
+# without RWI
+z2 <- run_model(porosity = c(0.25, 0.35),
+                percent_aq = c(0.35, 0.50),
+                irg_eff = c(0.55, 0.85),
+                RWI_on = FALSE, 
+                N = 1000)
+
+```
+
 
 ## Plot 1: time, layer depth, TDS, simulation df
 ```{r}
@@ -322,8 +392,8 @@ for(k in 1:N){
 library(tidyr)
 
 # make depth-time array
-ld   <- lapply(1:1000, function(x){return(layer_depths_array[1:7,,x])}) # all layer depths in a list
-td   <- lapply(1:1000, function(x){return(TDS[1:7,,x])}) # tds as a list of matrices
+ld   <- lapply(1:1000, function(x){return(z1$layer_depths_array[1:7,,x])}) # all layer depths in a list
+td   <- lapply(1:1000, function(x){return(z1$TDS[1:7,,x])}) # tds as a list of matrices
 ldtd <- lapply(1:1000, function(x){return(data.frame(cbind(ld[[x]], td[[x]])))}) # bind
 
 for(i in 1:1000){
@@ -338,6 +408,32 @@ df$time <- factor(paste0("t = ", df$time),
                   levels = paste0("t = ", 
                                   c("0", "50","100","150","200","250","300","350")))
 df$d <- df$d * 0.3048       # ft to meters
+df$rwi <- "RWI"
+
+
+
+
+# make depth-time array
+ld   <- lapply(1:1000, function(x){return(z2$layer_depths_array[1:7,,x])}) # all layer depths in a list
+td   <- lapply(1:1000, function(x){return(z2$TDS[1:7,,x])}) # tds as a list of matrices
+ldtd <- lapply(1:1000, function(x){return(data.frame(cbind(ld[[x]], td[[x]])))}) # bind
+
+for(i in 1:1000){
+  colnames(ldtd[[i]]) <- c("d", "0", "50","100","150","200","250","300","350")
+  ldtd[[i]] <- gather(ldtd[[i]], time, tds, -d) # wide to long
+  ldtd[[i]]$sim <- i # add simulation
+}
+
+df2 <- bind_rows(ldtd)
+df2$sim <- as.factor(df2$sim)
+df2$time <- factor(paste0("t = ", df2$time), 
+                   levels = paste0("t = ", 
+                                   c("0", "50","100","150","200","250","300","350")))
+df2$d <- df2$d * 0.3048       # ft to meters
+df2$rwi <- "noRWI"
+
+
+
 
 ll <- c(
   't = 0'  ="t = 0 yrs (1960)",
@@ -352,107 +448,155 @@ ll <- c(
 
 
 
-p <- df %>% filter(time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 350") & sim %in% 251:500) %>% 
-  ggplot(aes(-d, tds)) + 
-  geom_line(aes(color = sim), alpha = 0.2) +
-  geom_smooth(se = FALSE, color = "red") + 
-  coord_flip(ylim = c(0, 28000)) +
-  scale_color_grey() + 
-  guides(color = FALSE) + 
-  theme_minimal() + 
-  facet_wrap(~time, labeller = as_labeller(ll)) +
-  scale_y_continuous(breaks = c(1000, 10000, 25000), labels = c('1,000', '10,000', '25,000')) + 
-  labs(x = "Depth (m)", y = "TDS (mg/L)")
+# p <- df %>% filter(time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") & sim %in% 251:500) %>% 
+#   ggplot(aes(-d, tds)) + 
+#   geom_line(aes(color = sim), alpha = 0.2) +
+#   geom_smooth(se = FALSE, color = "red") + 
+#   coord_flip(ylim = c(0, 7500)) +
+#   scale_color_grey() + 
+#   guides(color = FALSE) + 
+#   theme_minimal() + 
+#   facet_wrap(~time, labeller = as_labeller(ll)) +
+#   scale_y_continuous(breaks = c(0, 1000, 2500, 5000, 7500), 
+#                      labels = c('0', '1,000', '2,500', '5,000', '7,500')) + 
+#   labs(x = "Depth (m)", y = "TDS (mg/L)") +
+#   theme(panel.grid.minor = element_blank())
+# 
+# p
 
-p
-
-# ggsave(p, filename = "results/p_sim.pdf", device = cairo_pdf, height = 5, width = 7)
+#ggsave(p, filename = "results/p_sim.pdf", device = cairo_pdf, height = 5, width = 7)
 ```
+
+```{r}
+df2$tc <- rep(1:8, each = 7)
+df2$dc <- 1:7
+filter(df2, dc == 1, tc == 1) %>% summarise(md = mean(d), mtds = median(tds))
+filter(df2, dc == 1, tc == 2) %>% summarise(md = mean(d), mtds = median(tds))
+```
+
 
 # Combine RWI and no RWI
 ```{r}
-df1 <- df # RWI
-df2 <- filter(df, time != "t = 0") # no RWI: second run
-df1$rwi <- "RWI"; df2$rwi <- "no RWI"
+#df1 <- df # RWI
+#df2 <- filter(df2, time != "t = 0") # no RWI: second run
+#df1$rwi <- "RWI"; df2$rwi <- "no RWI"
 
-df3 <- bind_rows(df1, df2) %>% mutate(sim2 = paste0(as.character(sim), "_", rwi))
+df3 <- bind_rows(df, df2) %>% mutate(sim2 = paste0(as.character(sim), "_", rwi))
 
-p <- df3 %>% filter(time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") & sim %in% 251:500) %>% 
-    ggplot(aes(-d, tds)) + 
-    geom_line(aes(-d, tds,color = sim2), alpha = 0.2) + 
-    geom_smooth(data = filter(df1, 
-                              time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") & 
-                                  sim %in% 1:1000 & d >= 60), # capture overall trend
-                aes(-d, tds), 
-                color = "#440154ff", 
-                se = FALSE) +
-    geom_smooth(data = filter(df2, 
-                              time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") & 
-                                  sim %in% 1:1000 & d >= 60), # capture overall trend
-                aes(-d, tds), 
-                color = "#21908dff", 
-                se = FALSE) +
-    geom_hline(yintercept = 1000, linetype = "dashed") +
-    scale_color_grey() + 
-    guides(color = FALSE) + 
-    coord_flip(ylim = c(0, 21000)) + 
-    theme_minimal() + 
-    facet_wrap(~time, labeller = as_labeller(ll)) +
-    scale_y_continuous(breaks = c(0, 5000, 10000, 15000, 20000), 
-                       labels = c('0', '5,000', '10,000', '15,000', '20,000')) + 
-    labs(x = "Depth (m)", y = "TDS (mg/L)")  +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          panel.grid.minor = element_blank())
+p <- df3 %>% 
+  filter(time %in% c("t = 50", "t = 100", "t = 200", "t = 250", "t = 300") & 
+         sim %in% 1:250) %>% 
+  ggplot(aes(-d, tds)) + 
+  geom_line(aes(-d, tds, color = sim2), alpha = 0.2, lwd = 0.4) +
+  # RWI == TRUE: purple
+  geom_smooth(data = filter(df,
+                            time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") &
+                                sim %in% 1:1000 & d >= 60), # capture overall trend
+              aes(-d, tds),
+              color = "#440154ff",
+              se = FALSE) +
+  # RWI == FALSE: blue
+  geom_smooth(data = filter(df2,
+                            time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") &
+                                sim %in% 1:1000 & d >= 60), # capture overall trend
+              aes(-d, tds),
+              color = "#21908dff",
+              se = FALSE,
+              span = 0.01) +
+  geom_hline(yintercept = 1000, linetype = "dashed") +
+  scale_color_grey() + 
+  guides(color = FALSE) + 
+  coord_flip(ylim = c(0, 7500))+#21000)) + 
+  theme_minimal() + 
+  facet_wrap(~time, labeller = as_labeller(ll)) +
+  # scale_y_continuous(breaks = c(0, 5000, 10000),#, 15000, 20000), 
+  #                    labels = c('0', '5,000', '10,000'))+#, '15,000', '20,000')) + 
+  scale_y_continuous(breaks = c(0, 1000, 2500, 5000, 7500), 
+                     labels = c('0', '1,000', '2,500', '5,000', '7,500')) + 
+  labs(x = "Depth (m)", y = "TDS (mg/L)")  +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.minor = element_blank())
 
-ggsave(p, filename = "results/p_sim_both.pdf", device = cairo_pdf, height = 5, width = 7)
+p
+#ggsave(p, filename = "results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
 ```
 
 
 ## Plot 2: Compare concentrations of GW, TAW, NDP
 ```{r Plot 2: Compare concentrations of GW, TAW, NDP}
 # initalize matricies
-GWP_mean = as.data.frame(matrix(0,7,1))
-AW_mean = as.data.frame(matrix(0,7,1))
-EC_mean = as.data.frame(matrix(0,7,1))
+GWP_mean  = as.data.frame(matrix(0,7,1))
+AW_mean   = as.data.frame(matrix(0,7,1))
+EC_mean   = as.data.frame(matrix(0,7,1))
 EC_median = as.data.frame(matrix(0,7,1))
-GWP_5 = as.data.frame(matrix(0,7,1))
-AW_5 = as.data.frame(matrix(0,7,1))
-EC_5 = as.data.frame(matrix(0,7,1))
-GWP_95 = as.data.frame(matrix(0,7,1))
-AW_95 = as.data.frame(matrix(0,7,1))
-EC_95 = as.data.frame(matrix(0,7,1))
+GWP_5     = as.data.frame(matrix(0,7,1))
+AW_5      = as.data.frame(matrix(0,7,1))
+EC_5      = as.data.frame(matrix(0,7,1))
+GWP_95    = as.data.frame(matrix(0,7,1))
+AW_95     = as.data.frame(matrix(0,7,1))
+EC_95     = as.data.frame(matrix(0,7,1))
+
 for(i in 1:7){
-  GWP_mean[i,1] = mean(TDS_GWP[i,1,])
-  AW_mean[i,1] = mean(TDS_AW[i,1,])
-  EC_mean[i,1] = mean(EC[i,1,])
-  EC_median[i,1] = median(EC[i,1,])
-  GWP_5[i,1] = quantile(TDS_GWP[i,1,], c(0.05))
-  GWP_95[i,1] = quantile(TDS_GWP[i,1,], c(0.95))
-  AW_5[i,1] = quantile(TDS_AW[i,1,], c(0.05))
-  AW_95[i,1] = quantile(TDS_AW[i,1,], c(0.95))
-  EC_5[i,1] = quantile(EC[i,1,], c(0.05))
-  EC_95[i,1] = quantile(EC[i,1,], c(0.95))
+  GWP_mean[i,1]  = mean(z1$TDS_GWP[i,1,])
+  AW_mean[i,1]   = mean(z1$TDS_AW[i,1,])
+  EC_mean[i,1]   = mean(z1$EC[i,1,])
+  EC_median[i,1] = median(z1$EC[i,1,])
+  GWP_5[i,1]     = quantile(z1$TDS_GWP[i,1,], c(0.05))
+  GWP_95[i,1]    = quantile(z1$TDS_GWP[i,1,], c(0.95))
+  AW_5[i,1]      = quantile(z1$TDS_AW[i,1,], c(0.05))
+  AW_95[i,1]     = quantile(z1$TDS_AW[i,1,], c(0.95))
+  EC_5[i,1]      = quantile(z1$EC[i,1,], c(0.05))
+  EC_95[i,1]     = quantile(z1$EC[i,1,], c(0.95))
 }
 
 ## compile stats for TDS of pumped GW, Total Applied Water (GW+SW), and Evaporative concentration of NDP
 
 # no RWI
+EC_dat_rwi = data.frame("legend" = rep(c("A","B","C"), each=7),
+                        "time"   = factor(seq(0,300,50)),
+                        "mean"   = rbind(GWP_mean, AW_mean, EC_median),
+                        "p5"     = rbind(GWP_5, AW_5, EC_5),
+                        "p95"    = rbind(GWP_95, AW_95, EC_95))
+colnames(EC_dat_rwi) = c("legend","time","mean","p5", "p95")
+EC_dat_rwi$class <- "Rock-water interactions"
+
+
+
+
+# initalize matricies
+GWP_mean  = as.data.frame(matrix(0,7,1))
+AW_mean   = as.data.frame(matrix(0,7,1))
+EC_mean   = as.data.frame(matrix(0,7,1))
+EC_median = as.data.frame(matrix(0,7,1))
+GWP_5     = as.data.frame(matrix(0,7,1))
+AW_5      = as.data.frame(matrix(0,7,1))
+EC_5      = as.data.frame(matrix(0,7,1))
+GWP_95    = as.data.frame(matrix(0,7,1))
+AW_95     = as.data.frame(matrix(0,7,1))
+EC_95     = as.data.frame(matrix(0,7,1))
+
+for(i in 1:7){
+  GWP_mean[i,1]  = mean(z2$TDS_GWP[i,1,])
+  AW_mean[i,1]   = mean(z2$TDS_AW[i,1,])
+  EC_mean[i,1]   = mean(z2$EC[i,1,])
+  EC_median[i,1] = median(z2$EC[i,1,])
+  GWP_5[i,1]     = quantile(z2$TDS_GWP[i,1,], c(0.05))
+  GWP_95[i,1]    = quantile(z2$TDS_GWP[i,1,], c(0.95))
+  AW_5[i,1]      = quantile(z2$TDS_AW[i,1,], c(0.05))
+  AW_95[i,1]     = quantile(z2$TDS_AW[i,1,], c(0.95))
+  EC_5[i,1]      = quantile(z2$EC[i,1,], c(0.05))
+  EC_95[i,1]     = quantile(z2$EC[i,1,], c(0.95))
+}
+
+# RWI: rerun with RWI
 EC_dat_nrwi = data.frame("legend"=rep(c("A","B","C"), each=7),
                     "time" = factor(seq(0,300,50)),
                     "mean" = rbind(GWP_mean, AW_mean, EC_median),
                     "p5" = rbind(GWP_5, AW_5, EC_5),
                     "p95" = rbind(GWP_95, AW_95, EC_95))
 colnames(EC_dat_nrwi) = c("legend","time","mean","p5", "p95")
-EC_dat_nrwi$class <- "No rock-water interactions"
-
-# RWI: rerun with RWI
-EC_dat_rwi = data.frame("legend"=rep(c("A","B","C"), each=7),
-                    "time" = factor(seq(0,300,50)),
-                    "mean" = rbind(GWP_mean, AW_mean, EC_median),
-                    "p5" = rbind(GWP_5, AW_5, EC_5),
-                    "p95" = rbind(GWP_95, AW_95, EC_95))
-colnames(EC_dat_rwi) = c("legend","time","mean","p5", "p95")
-EC_dat_rwi$class <- "Rock-water interactions present"
+EC_dat_nrwi$class <- "No Rock-water interactions present"
+#EC_dat_nrwi$class <- ""
 
 # combine
 EC_dat2 <- bind_rows(EC_dat_nrwi, EC_dat_rwi)
@@ -479,8 +623,9 @@ p2 <- ggplot(filter(EC_dat2, time %in% c(0,50,100,150)), aes(x=time, y=mean, fil
         legend.background = element_rect(fill = "white", color = "transparent")) +
   facet_wrap(~class, ncol = 2)
 
+p2
 # save
-ggsave("results/p_ec.pdf", p2, height= 4, width = 7, device = cairo_pdf)
+#ggsave("results/p_ec2.pdf", p2, height= 4, width = 7, device = cairo_pdf)
 ```
 
 
@@ -490,16 +635,21 @@ ggsave("results/p_ec.pdf", p2, height= 4, width = 7, device = cairo_pdf)
 Mtons_to_metric_tons <- function(x){return(x * 907184.74)}
 
 ## non:constant mass: extract all GW pumping TDS and convert to mass
-gwp <- vector("list", length = 7)
+gwp <- gwp2 <- vector("list", length = 7)
 
 for(i in 1:7){
-  gwp[[i]] <- data.frame(TDS_GWP[i, 1, ], t = i, type = "GWP")
+  gwp[[i]]  <- data.frame(tds = z1$TDS_GWP[i, 1, ], t = i, type = "GWP_RWI")
+  gwp2[[i]] <- data.frame(tds = z2$TDS_GWP[i, 1, ], t = i, type = "GWP_nRWI")
 }
 
-gwp <- dplyr::bind_rows(gwp)
-colnames(gwp) <- c("c","t", "type")
+gwp  <- dplyr::bind_rows(gwp)
+gwp2 <- dplyr::bind_rows(gwp2)
+
 gwp <- gwp %>% 
-  mutate(m = Mtons_to_metric_tons(mg_to_Mton(c * annual_fluxes[7,2])))
+  mutate(m = Mtons_to_metric_tons(mg_to_Mton(tds * annual_fluxes[7,2])))
+
+gwp2 <- gwp2 %>% 
+  mutate(m = Mtons_to_metric_tons(mg_to_Mton(tds * annual_fluxes[7,2])))
 
 # constant mass: surface water and allother budget terms
 
@@ -513,18 +663,24 @@ all_else <- Mtons_to_metric_tons(mg_to_Mton(sum(annual_fluxes[c(2,3,4,5,6,8),4])
 df1 <- data.frame(m = rep(c(swm, all_else), each = 7), 
                   t = rep(1:7, times = 2), 
                   type = rep(c("surface_water_import", "all_else"), each = 7)) 
-df2 <- select(gwp, m, t, type) 
-df2 <- df2 %>% 
+df2 <- select(gwp, m, t, type) %>% 
+  group_by(t) %>% 
+  summarise(median = median(m), p5 = quantile(m, 0.05), p95 = quantile(m, 0.95))
+
+df2b <- select(gwp2, m, t, type) %>% 
   group_by(t) %>% 
   summarise(median = median(m), p5 = quantile(m, 0.05), p95 = quantile(m, 0.95))
 
 df1$p5  <- NA
 df1$p95 <- NA
-df2 <- df2 %>% rename(m = median) %>% mutate(type = "gwp") %>% select(m, t, type, p5, p95)
+df2  <- df2 %>% rename(m = median) %>% mutate(type = "gwp_rwi") %>% select(m, t, type, p5, p95)
+df2b <- df2b %>% rename(m = median) %>% mutate(type = "gwp_no_rwi") %>% select(m, t, type, p5, p95)
 
 # rwi: need to go back and re-run code with RWI
 mg_to_metric_tons <- function(x){return(x * 1e-9)}
-RWI_int <- mg_to_metric_tons(colSums((RWI_cont[1:7,1,]*lay_vol[1:7,1,])/50)) %>% 
+
+#RWI_cont[7,1,] <- RWI_cont[1,1,]
+RWI_int <- mg_to_metric_tons(colSums((z1$RWI_cont[1:7,1,]*z1$lay_vol[1:7,1,])/50)) %>% 
   quantile(c(0.05, 0.5, 0.95))
 df3 <- data.frame(m = RWI_int[2], t = 1:7, type = "rwi", p5 = RWI_int[1], p95 = RWI_int[3])
 
@@ -538,6 +694,12 @@ df4_rwi <- df4
 df4_rwi$class <- "Rock-water interactions present"
 
 # no RWI: re-run without RWI
+df3b <- df3
+df3b$m <- 0; df3b$p5 <- 0; df3b$p95 <- 0 
+df4 <- rbind.data.frame(df1, df2b, df3b)
+df4$t <- rep(seq(0,300, 50), times = 4) # format times
+df4$type <- factor(rep(c("Surface Water Diversions", "I, C, W, R, L, B", "Pumped Groundwater", "Rock-water Interactions"), each = 7), # format labels
+                   levels = c("I, C, W, R, L, B", "Surface Water Diversions", "Pumped Groundwater","Rock-water Interactions"))
 df4_nrwi <- df4 #%>% filter(m != 0)
 df4_nrwi$class <- "No rock-water interactions"
 
@@ -546,6 +708,7 @@ df5 <- bind_rows(df4_rwi, df4_nrwi)
 
 # plot
 p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill = type)) + # convert m from tons to Mtons
+#p3 <- ggplot(filter(df4_rwi, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill = type)) + # convert m from tons to Mtons
   geom_bar(position = position_dodge(), stat = "identity", 
            colour = "black", size=.3,
            alpha = 0.7) +
@@ -558,11 +721,12 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
   theme(legend.position = c(0.20, 0.75), panel.grid.minor = element_blank(),
         legend.background = element_rect(fill = "white", color = "transparent")) +
   #theme(legend.position = "bottom") +
-  labs(x = "Time (yrs)", y = "Annual mass (Metric Mtons)") +
+  labs(x = "", y = "Annual mass (Metric Mtons)") +
   facet_wrap(~class, ncol = 2) +
   scale_y_continuous(label = comma)
 
-ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf)
+p3
+#ggsave("results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
 ```
 
 
@@ -572,36 +736,36 @@ ggsave("results/p_salt_budget.pdf", p3, height= 4, width = 7, device = cairo_pdf
 TDS_mean = as.data.frame(matrix(0,8,8))
 for(i in 1:8){
   for(j in 1:8){
-    TDS_mean[i,j] = mean(TDS[i,j,])
+    TDS_mean[i,j] = mean(z2$TDS[i,j,])
   }
 }
 
 # mean depths
-sd.top = matrix(0,7,8)
+sd.top    = matrix(0,7,8)
 sd.bottom = matrix(0,7,8)
 for(d in 1:7){
   for(t in 1:8){
-    sd.top[d,t] = TDS_mean[d,t] - sd(TDS[d,t,]) # sd
-    sd.bottom[d,t] = TDS_mean[d,t] + sd(TDS[d,t,]) # sd
+    sd.top[d,t]    = TDS_mean[d,t] - sd(z2$TDS[d,t,]) # sd
+    sd.bottom[d,t] = TDS_mean[d,t] + sd(z2$TDS[d,t,]) # sd
   }
 }
 
 # 5th and 95th percentiles
-TDS_5 = matrix(0,7,8)
+TDS_5  = matrix(0,7,8)
 TDS_95 = matrix(0,7,8)
 for(d in 1:7){
   for(t in 1:8){
-    TDS_5[d,t] = quantile(TDS[d,t,], c(0.05)) # 5% CI
-    TDS_95[d,t] = quantile(TDS[d,t,], c(.95))  # 95% CI
+    TDS_5[d,t]  = quantile(z2$TDS[d,t,], c(0.05)) # 5% CI
+    TDS_95[d,t] = quantile(z2$TDS[d,t,], c(.95))  # 95% CI
   }
 }
 
 ## calculate layer depths/velocities of simulation means for main plot
-layer_depths_mean = as.data.frame(matrix(0,7,1))
+layer_depths_mean   = as.data.frame(matrix(0,7,1))
 layer_velocity_mean = as.data.frame(matrix(0,7,1))
 for(j in 1:7){
-  layer_depths_mean[j,1] = mean(layer_depths_array[j,1,]) * -1
-  layer_velocity_mean[j,1] = mean(layer_velocity_array[j,1,])
+  layer_depths_mean[j,1]   = mean(z2$layer_depths_array[j,1,]) * -1
+  layer_velocity_mean[j,1] = mean(z2$layer_velocity_array[j,1,])
 }
 
 ## reshape layer_depths_mean for plotting
@@ -647,12 +811,20 @@ temp6 <- left_join(temp5, temp2, by = c("depth", "t"))
 
 temp6$depth <- temp6$depth * 0.3048 # convert depth to m
 temp6$t     <- rep(seq(0, 350, 50), each = 7) # time from index to years
+temp6       <- filter(temp6, t <= 300) 
 
 # make the animation
 anim <- ggplot(temp6, aes(depth, value)) + 
   geom_ribbon(aes(ymin = p5, ymax = p95), alpha = 0.4) +
   geom_line(col = "red", size = 1) + 
+  geom_hline(yintercept = 1000, linetype = "dashed") +
   coord_flip() +
+  #annotate(geom = "text", x = -250, y = 1600, label = "TDS upper MCL") +
+  #geom_curve(data = data.frame(x1=-260,x2=-300,y1=1600,y2=1050),
+             #aes(x = x1, y = y1, xend = x2, yend = y2),
+             #arrow = arrow(length = unit(0.03, "npc")),
+             #curvature = -0.4) +
+  scale_y_continuous(labels = comma) +
   theme_minimal(base_size = 14) +
   labs(title = 'Time: {round(frame_time, 2)} yrs ({1960 + round(frame_time, 0)})', 
        y = "TDS (mg/L)", x = "Depth (m)") + 
