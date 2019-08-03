@@ -189,16 +189,16 @@ N = 1000
 
 ## Initialize 3D output arrays 
 ```{r Initialize 3D output arrays, warning = F, message = F}
-TDS                  = array(0, dim=c(8,8,N)) # TDS array
-layer_depths_array   = array(0, dim=c(8,1,N)) # layer depths array
-layer_velocity_array = array(0, dim=c(8,1,N)) # layer velocity array
-mass                 = array(0, dim=c(8,1,N)) # array of sum of masses per time step
-TDS_GWP              = array(0, dim=c(8,1,N)) # array of TDS of pumped groundwater per time step
-TDS_AW               = array(0, dim=c(8,1,N)) # array of TDS of applied water (SW+GW) per time step
-EC                   = array(0, dim=c(8,1,N)) # array of evaporative concentration of NDP per time step (TDS)
-NDP_mf               = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
-RWI_cont             = array(0, dim=c(8,1,N)) # array of Rock water interactions
-lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
+# TDS                  = array(0, dim=c(8,8,N)) # TDS array
+# layer_depths_array   = array(0, dim=c(8,1,N)) # layer depths array
+# layer_velocity_array = array(0, dim=c(8,1,N)) # layer velocity array
+# mass                 = array(0, dim=c(8,1,N)) # array of sum of masses per time step
+# TDS_GWP              = array(0, dim=c(8,1,N)) # array of TDS of pumped groundwater per time step
+# TDS_AW               = array(0, dim=c(8,1,N)) # array of TDS of applied water (SW+GW) per time step
+# EC                   = array(0, dim=c(8,1,N)) # array of evaporative concentration of NDP per time step (TDS)
+# NDP_mf               = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
+# RWI_cont             = array(0, dim=c(8,1,N)) # array of Rock water interactions
+# lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
 ```
 
 ## Compute all output  
@@ -488,10 +488,83 @@ ll <- c(
 ```
 
 ```{r}
+# df == RWI
+df$tc <- rep(1:8, each = 7) # add time class for easy filtering (1 = 0 yrs, 2 = 50 yrs...)
+df$dc <- 1:7                # depth class for easy filtering (1 = layer 1, 2 = layer 2, ...)
+
+filter(df, dc == 1, tc == 1) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
+filter(df, dc == 1, tc == 2) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
+filter(df, dc == 1, tc == 5) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
+
+# df2 == no RWI
 df2$tc <- rep(1:8, each = 7)
 df2$dc <- 1:7
-filter(df2, dc == 1, tc == 1) %>% summarise(md = mean(d), mtds = median(tds))
-filter(df2, dc == 1, tc == 2) %>% summarise(md = mean(d), mtds = median(tds))
+
+filter(df2, dc == 1, tc == 1) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
+filter(df2, dc == 1, tc == 2) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
+filter(df2, dc == 1, tc == 5) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
+filter(df2, dc == 1, tc == 7) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
+
+filter(df2, dc == 4, tc == 5) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
+
+filter(df2, dc == 7, tc == 7) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
+
+
+# tables
+t1 <- group_by(df, dc, time) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75)) %>% 
+  ungroup() %>% 
+  select(-dc) %>% 
+  filter(time != "t = 350") %>% 
+  mutate_at(.vars = c("mean_depth","p50","p25","p75"), .funs = round) %>% 
+  mutate(IQR = paste0(p25, "-", p75)) %>% 
+  select(-c("p25", "p75")) %>% 
+  rename(median = p50) %>% 
+  mutate(mean_depth = as.character(mean_depth),
+         median = as.character(median))
+
+t2 <- group_by(df2, dc, time) %>% 
+  summarise(mean_depth = mean(d), p50 = median(tds), 
+            p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75)) %>% 
+  ungroup() %>% 
+  select(-dc) %>% 
+  filter(time != "t = 350") %>% 
+  select(p50:p75) %>%   
+  mutate_at(.vars = c("p50","p25","p75"), .funs = round) %>% 
+  mutate(IQR = paste0(p25, "-", p75)) %>% 
+  select(-c("p25", "p75")) %>% 
+  rename(median = p50) %>% 
+  mutate(median = as.character(median))
+
+t3 <- cbind.data.frame(t1, data.frame(x = " "), t2)
+t3$time <- stringr::str_sub(t3$time, 5,10)
+
+library(kableExtra); library(knitr)
+kable(t3, "latex", caption = "Values reported are TDS ($mg/L$) unless otherwise noted.") %>% 
+  add_header_above(c(" " = 2, "No rock-water interactions" = 2,  "Rock-water interactions present" = 2)) 
+
+
+print(xtable(t3), tabluar.environment = "longtable", include.rownames = FALSE)
+  
 ```
 
 
@@ -741,7 +814,7 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
   theme(legend.position = c(0.20, 0.75), panel.grid.minor = element_blank(),
         legend.background = element_rect(fill = "white", color = "transparent")) +
   #theme(legend.position = "bottom") +
-  labs(x = "", y = "Annual mass (Metric Mtons)") +
+  labs(x = "Time (yrs)", y = "Annual mass (Metric Mtons)") +
   facet_wrap(~class, ncol = 2) +
   scale_y_continuous(label = comma)
 
