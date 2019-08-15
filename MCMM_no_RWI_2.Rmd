@@ -529,7 +529,7 @@ filter(df2, dc == 7, tc == 7) %>%
 
 
 # tables
-t1 <- group_by(df, dc, time) %>% 
+t1 <- group_by(df2, dc, time) %>% 
   summarise(mean_depth = mean(d), p50 = median(tds), 
             p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75)) %>% 
   ungroup() %>% 
@@ -542,7 +542,7 @@ t1 <- group_by(df, dc, time) %>%
   mutate(mean_depth = as.character(mean_depth),
          median = as.character(median))
 
-t2 <- group_by(df2, dc, time) %>% 
+t2 <- group_by(df, dc, time) %>% 
   summarise(mean_depth = mean(d), p50 = median(tds), 
             p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75)) %>% 
   ungroup() %>% 
@@ -555,13 +555,10 @@ t2 <- group_by(df2, dc, time) %>%
   rename(median = p50) %>% 
   mutate(median = as.character(median))
 
-t3 <- cbind.data.frame(t1, data.frame(x = " "), t2)
+t3 <- cbind.data.frame(t1, t2)
 t3$time <- stringr::str_sub(t3$time, 5,10)
 
 library(kableExtra); library(knitr)
-kable(t3, "latex", caption = "Values reported are TDS ($mg/L$) unless otherwise noted.") %>% 
-  add_header_above(c(" " = 2, "No rock-water interactions" = 2,  "Rock-water interactions present" = 2)) 
-
 
 print(xtable(t3), tabluar.environment = "longtable", include.rownames = FALSE)
   
