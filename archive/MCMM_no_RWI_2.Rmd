@@ -187,19 +187,6 @@ SW_annual_mass = mg_to_Mton(af_to_L(V_SW) * TDS_SW) # Mton
 N = 1000
 ```
 
-## Initialize 3D output arrays 
-```{r Initialize 3D output arrays, warning = F, message = F}
-# TDS                  = array(0, dim=c(8,8,N)) # TDS array
-# layer_depths_array   = array(0, dim=c(8,1,N)) # layer depths array
-# layer_velocity_array = array(0, dim=c(8,1,N)) # layer velocity array
-# mass                 = array(0, dim=c(8,1,N)) # array of sum of masses per time step
-# TDS_GWP              = array(0, dim=c(8,1,N)) # array of TDS of pumped groundwater per time step
-# TDS_AW               = array(0, dim=c(8,1,N)) # array of TDS of applied water (SW+GW) per time step
-# EC                   = array(0, dim=c(8,1,N)) # array of evaporative concentration of NDP per time step (TDS)
-# NDP_mf               = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
-# RWI_cont             = array(0, dim=c(8,1,N)) # array of Rock water interactions
-# lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
-```
 
 ## Compute all output  
 ```{r Compute all Output, warning = F, message = F}
@@ -559,7 +546,7 @@ t3 <- cbind.data.frame(t1, t2)
 t3$time <- stringr::str_sub(t3$time, 5,10)
 
 library(kableExtra); library(knitr)
-
+library(xtable)
 print(xtable(t3), tabluar.environment = "longtable", include.rownames = FALSE)
   
 ```
@@ -921,7 +908,7 @@ anim <- ggplot(temp6, aes(depth, value)) +
   transition_time(t) + 
   ease_aes("linear")
 
-anim_save("salinization.gif", anim) # save to root
+#anim_save("salinization.gif", anim) # save to root
 ```
 
 
