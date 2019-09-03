@@ -2,10 +2,10 @@
 
 Authors: Rich A. Pauloo [a], Graham E. Fogg [a], Thomas Harter [a], Zhilin Guo [b]
 
-[a] University of California, Davis, Hydrologic Sciences, One Shields Avenue, Davis, CA 95616
+[a] University of California, Davis, Hydrologic Sciences, One Shields Avenue, Davis, CA 95616  
 [b] Environmental Science and Engineering, South University of Science and Technology of China, 1088 Xueyuan Ave, Nanshan Qu, Shenzhen Shi, Guangdong Sheng, China, 518055
 
-This repository contains scripts and data related to the publication "Anthropogenic Basin Closure and Groundwater Salinization: An Unrecognized Threat to Water Quality Sustainability".
+This repository contains scripts and data related to the publication *"Anthropogenic Basin Closure and Groundwater Salinization: An Unrecognized Threat to Water Quality Sustainability".*
 
 
 ![](salinization.gif)  
