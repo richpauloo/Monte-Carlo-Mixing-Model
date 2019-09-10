@@ -777,8 +777,8 @@ df3 <- data.frame(m = RWI_int[2], t = 1:7, type = "rwi", p5 = RWI_int[1], p95 = 
 
 df4 <- rbind.data.frame(df1, df2, df3)
 df4$t <- rep(seq(0,300, 50), times = 4) # format times
-df4$type <- factor(rep(c("Surface Water Diversions", "I, C, W, R, L, B", "Pumped Groundwater", "Rock-water Interactions"), each = 7), # format labels
-                   levels = c("I, C, W, R, L, B", "Surface Water Diversions", "Pumped Groundwater","Rock-water Interactions"))
+df4$type <- factor(rep(c("Surface Water Diversions", "I, C, R, B", "Pumped Groundwater", "Rock-water Interactions"), each = 7), # format labels
+                   levels = c("I, C, R, B", "Surface Water Diversions", "Pumped Groundwater","Rock-water Interactions"))
 
 # RWI
 df4_rwi <- df4
@@ -789,8 +789,8 @@ df3b <- df3
 df3b$m <- 0; df3b$p5 <- 0; df3b$p95 <- 0 
 df4 <- rbind.data.frame(df1, df2b, df3b)
 df4$t <- rep(seq(0,300, 50), times = 4) # format times
-df4$type <- factor(rep(c("Surface Water Diversions", "I, C, W, R, L, B", "Pumped Groundwater", "Rock-water Interactions"), each = 7), # format labels
-                   levels = c("I, C, W, R, L, B", "Surface Water Diversions", "Pumped Groundwater","Rock-water Interactions"))
+df4$type <- factor(rep(c("Surface Water Diversions", "I, C, R, B", "Pumped Groundwater", "Rock-water Interactions"), each = 7), # format labels
+                   levels = c("I, C, R, B", "Surface Water Diversions", "Pumped Groundwater","Rock-water Interactions"))
 df4_nrwi <- df4 #%>% filter(m != 0)
 df4_nrwi$class <- "No rock-water interactions"
 
