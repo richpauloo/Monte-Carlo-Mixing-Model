@@ -3,7 +3,7 @@
 Created July 7, 2017 by Rich Pauloo at the University of California Davis   
 
 
-![](salinization.gif)  
+![](results/salinization.gif)  
 
 Groundwater TDS-depth profile across a grid of timesteps. The red line represents the average TDS at the specified depth, and the width of the grey interval represents the 5th and 9th percentiles of the distribution of TDS output from the 1,000 model run ensemble.  
 
@@ -12,6 +12,7 @@ Groundwater TDS-depth profile across a grid of timesteps. The red line represent
 `/archive` contains archived, deprecated versions of the model  
 `/code` contains the mixing cell model written in R  
 `/data` contains data and objects to run the model  
+`/results` contain the graphs produced by the model  
 
 
 

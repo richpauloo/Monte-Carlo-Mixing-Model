@@ -30,7 +30,7 @@ RZ = read.csv(file = "data/RZ.csv", stringsAsFactors = FALSE, header = TRUE)
 
 # Bring in boundary condition data and RWI from dissertation/code/02_reanalyze_gw_tds.R 
 
-boundary_dat <- readRDS("~/Github/Monte-Carlo-Mixing-Model/data/boundary_dat.rds")
+boundary_dat <- readRDS("data/boundary_dat.rds")
 bd <- boundary_dat %>% dplyr::select(x,y) %>% 
   mutate(x = abs(x) * 3.28084) %>% # convert m to ft for model
   arrange(x) %>% 
@@ -105,12 +105,11 @@ Tot_V          = af_to_L(sum(V))
 # surface area weighted thickness
 SA_w_thickness = sum(Dim$SA/Tot_SA*Dim$thickness) 
 
-# time step length
-t = 50 # years
+# time step length (years)
+t = 50
 
-# length of C2VSim simulation
-l = 40 # years
-
+# length of C2VSim groundwater budget (years)
+l = 40 
 
 
 # salt concentration of natural SW and thus GWW from (Cismowski, 2006)
@@ -161,7 +160,10 @@ ET = sum(RZ$AG_ET) + sum(RZ$URB_ET) + sum(RZ$NAT_ET) # Net ET
 
 # Percentages
 #pI   = NDP/I # percentage of infiltration that becomes NDP
-pGWP = P/I # Percentage of groundwater pumping in Total Applied Water
+#pGWP = P/I # Percentage of groundwater pumping in Total Applied Water
+pGWP = (sum(LB$Ag..Pumping) + sum(LB$Urban.Pumping)) / 
+  (sum(LB$Ag..Pumping)   + sum(LB$Ag..Diversion) + 
+   sum(LB$Urban.Pumping) + sum(LB$Urban.Diversion))
 pSW  = 1 - pGWP # percentage of surface water diversions and reuse in Total Applied Water
 
 # Average Annual Surface Water TDS, volume, and mass flux
@@ -186,9 +188,11 @@ sw <- sw %>%
   mutate(pv  = taf_yr / (sum(sw$taf_yr)), # percent volume
          vwc = pv * c) # volume weighted concentration
 TDS_SW <- sum(sw$vwc) # final concentration of surface water input
+
 ####################################################################################
 
-V_SW = (I - P) / l # Average Annual SW diversion volume (AF/yr)
+# sanity check: matches 5.54 km3/yr mass balance in Table S1
+V_SW = (sum(LB$Ag..Diversion) + sum(LB$Urban.Diversion))/40 
 SW_annual_mass = mg_to_Mton(af_to_L(V_SW) * TDS_SW) # Mton
 
 
@@ -466,17 +470,17 @@ ll <- c(
 
 
 
-# p <- df %>% filter(time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") & sim %in% 251:500) %>% 
-#   ggplot(aes(-d, tds)) + 
+# p <- df %>% filter(time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") & sim %in% 251:500) %>%
+#   ggplot(aes(-d, tds)) +
 #   geom_line(aes(color = sim), alpha = 0.2) +
-#   geom_smooth(se = FALSE, color = "red") + 
+#   geom_smooth(se = FALSE, color = "red") +
 #   coord_flip(ylim = c(0, 7500)) +
-#   scale_color_grey() + 
-#   guides(color = FALSE) + 
-#   theme_minimal() + 
+#   scale_color_grey() +
+#   guides(color = FALSE) +
+#   theme_minimal() +
 #   facet_wrap(~time, labeller = as_labeller(ll)) +
-#   scale_y_continuous(breaks = c(0, 1000, 2500, 5000, 7500), 
-#                      labels = c('0', '1,000', '2,500', '5,000', '7,500')) + 
+#   scale_y_continuous(breaks = c(0, 1000, 2500, 5000, 7500),
+#                      labels = c('0', '1,000', '2,500', '5,000', '7,500')) +
 #   labs(x = "Depth (m)", y = "TDS (mg/L)") +
 #   theme(panel.grid.minor = element_blank())
 # 
@@ -594,13 +598,13 @@ p <- df3 %>%
   geom_hline(yintercept = 1000, linetype = "dashed") +
   scale_color_grey() + 
   guides(color = FALSE) + 
-  coord_flip(ylim = c(0, 7500))+#21000)) + 
+  coord_flip(ylim = c(0, 10000))+#21000)) + 
   theme_minimal() + 
   facet_wrap(~time, labeller = as_labeller(ll)) +
   # scale_y_continuous(breaks = c(0, 5000, 10000),#, 15000, 20000), 
   #                    labels = c('0', '5,000', '10,000'))+#, '15,000', '20,000')) + 
-  scale_y_continuous(breaks = c(0, 1000, 2500, 5000, 7500), 
-                     labels = c('0', '1,000', '2,500', '5,000', '7,500')) + 
+  scale_y_continuous(breaks = c(0, 2500, 5000, 7500, 10000), 
+                     labels = c('0', '2,500', '5,000', '7,500', '10,000')) + 
   labs(x = "Depth (m)", y = "TDS (mg/L)")  +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         panel.grid.minor = element_blank())
@@ -918,7 +922,7 @@ anim <- ggplot(temp6, aes(depth, value)) +
   transition_time(t) + 
   ease_aes("linear")
 
-#anim_save("salinization.gif", anim) # save to root
+#anim_save("results/salinization.gif", anim) # save to root
 
 
 
