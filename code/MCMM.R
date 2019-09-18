@@ -686,7 +686,7 @@ EC_dat_nrwi = data.frame("legend"=rep(c("A","B","C"), each=7),
                          "p5" = rbind(GWP_5, AW_5, EC_5),
                          "p95" = rbind(GWP_95, AW_95, EC_95))
 colnames(EC_dat_nrwi) = c("legend","time","mean","p5", "p95")
-EC_dat_nrwi$class <- "No Rock-water interactions present"
+EC_dat_nrwi$class <- "No Rock-water interactions"
 #EC_dat_nrwi$class <- ""
 
 # combine
@@ -782,7 +782,7 @@ df4$type <- factor(rep(c("Surface Water Diversions", "I, C, R, B", "Pumped Groun
 
 # RWI
 df4_rwi <- df4
-df4_rwi$class <- "Rock-water interactions present"
+df4_rwi$class <- "Rock-water interactions"
 
 # no RWI: re-run without RWI
 df3b <- df3
@@ -817,7 +817,7 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
   scale_y_continuous(label = comma)
 
 p3
-#ggsave("results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
+# ggsave("results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
 
 
 
