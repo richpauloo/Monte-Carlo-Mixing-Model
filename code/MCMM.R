@@ -20,17 +20,17 @@ library(tidyr)
 ####################################################################################
 
 # Groundwater budget (10/31/1961-9/30/2001)
-GW = read.csv(file = "data/GW.csv", stringsAsFactors = FALSE, header = TRUE) 
+GW = read.csv(file = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/data/GW.csv", stringsAsFactors = FALSE, header = TRUE) 
 
 # Land Budget budget (10/31/1961-9/30/2001)
-LB = read.csv(file = "data/LB.csv", stringsAsFactors = FALSE, header = TRUE)
+LB = read.csv(file = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/data/LB.csv", stringsAsFactors = FALSE, header = TRUE)
 
 # Root Zone budget (10/31/1961-9/30/2001)
-RZ = read.csv(file = "data/RZ.csv", stringsAsFactors = FALSE, header = TRUE) 
+RZ = read.csv(file = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/data/RZ.csv", stringsAsFactors = FALSE, header = TRUE) 
 
 # Bring in boundary condition data and RWI from dissertation/code/02_reanalyze_gw_tds.R 
 
-boundary_dat <- readRDS("data/boundary_dat.rds")
+boundary_dat <- readRDS("C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/data/boundary_dat.rds")
 bd <- boundary_dat %>% dplyr::select(x,y) %>% 
   mutate(x = abs(x) * 3.28084) %>% # convert m to ft for model
   arrange(x) %>% 
@@ -104,6 +104,9 @@ Tot_V          = af_to_L(sum(V))
 
 # surface area weighted thickness
 SA_w_thickness = sum(Dim$SA/Tot_SA*Dim$thickness) 
+
+# percent aquifer
+pa = 0.989
 
 # time step length (years)
 t = 50
@@ -203,7 +206,6 @@ N = 1000
 
 
 ## Compute all output  
-set.seed(23545) # ensure replicability
 
 run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
   
@@ -222,6 +224,11 @@ run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
   # loop over N realizations
   for(k in 1:N){
     
+    set.seed(k)
+    
+    # average regional porosity
+    #n = 0.30
+    
     # Random Variables
     n    = runif(1, min = porosity[1], max = porosity[2]) # porosity
     pa   = runif(1, min = percent_aq[1], max = percent_aq[2]) # percent aquifer
@@ -239,6 +246,8 @@ run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
     depths = c(-631.5,-2077) # C2VSim midpoints between layer centroids over which velcoity is calculated
     vel    = as.data.frame(cbind(vel,depths)) # bind vel and depth vectors into one data frame for analysis
     l      = lm(depths~vel, data = vel) # create a linear model between velocity and depth
+    
+    
     
     # vertical velocity profile
     v    = matrix(0,8,1) # initalize vector to hold computed velocities at various depths
@@ -392,16 +401,16 @@ run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
 # evaluate the model with and without RWI
 ##########################################################################
 # with RWI
-z1 <- run_model(porosity = c(0.25, 0.35),
-                percent_aq = c(0.35, 0.50),
-                irg_eff = c(0.55, 0.85),
+z1 <- run_model(porosity = c(0.2999, 0.3),
+                percent_aq = c(0.4, 0.5),
+                irg_eff = c(0.71, 0.73),
                 RWI_on = TRUE, 
                 N = 1000)
 
 # without RWI
-z2 <- run_model(porosity = c(0.25, 0.35),
-                percent_aq = c(0.35, 0.50),
-                irg_eff = c(0.55, 0.85),
+z2 <- run_model(porosity = c(0.2999, 0.3),
+                percent_aq = c(0.4, 0.5),
+                irg_eff = c(0.71, 0.73),
                 RWI_on = FALSE, 
                 N = 1000)
 
@@ -583,14 +592,14 @@ p <- df3 %>%
   # RWI == TRUE: purple
   geom_smooth(data = filter(df,
                             time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") &
-                              sim %in% 1:1000 & d >= 60), # capture overall trend
+                              sim %in% 1:1000), # capture overall trend
               aes(-d, tds),
               color = "#440154ff",
               se = FALSE) +
   # RWI == FALSE: blue
   geom_smooth(data = filter(df2,
                             time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") &
-                              sim %in% 1:1000 & d >= 60), # capture overall trend
+                              sim %in% 1:1000), # capture overall trend
               aes(-d, tds),
               color = "#21908dff",
               se = FALSE,
@@ -598,19 +607,19 @@ p <- df3 %>%
   geom_hline(yintercept = 1000, linetype = "dashed") +
   scale_color_grey() + 
   guides(color = FALSE) + 
-  coord_flip(ylim = c(0, 10000))+#21000)) + 
+  coord_flip(ylim = c(-0, 4000))+#21000)) + 
   theme_minimal() + 
   facet_wrap(~time, labeller = as_labeller(ll)) +
   # scale_y_continuous(breaks = c(0, 5000, 10000),#, 15000, 20000), 
   #                    labels = c('0', '5,000', '10,000'))+#, '15,000', '20,000')) + 
-  scale_y_continuous(breaks = c(0, 2500, 5000, 7500, 10000), 
-                     labels = c('0', '2,500', '5,000', '7,500', '10,000')) + 
+  scale_y_continuous(breaks = c(0, 1000, 2000, 3000, 4000), 
+                     labels = c('0', '1,000', '2,000', '3,000', '4,000')) + 
   labs(x = "Depth (m)", y = "TDS (mg/L)")  +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         panel.grid.minor = element_blank())
-
+ 
 p
-#ggsave(p, filename = "results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
+#ggsave(p, filename = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
 
 
 
@@ -710,13 +719,19 @@ p2 <- ggplot(filter(EC_dat2, time %in% c(0,50,100,150)), aes(x=time, y=mean, fil
                                 "Total Applied Water", 
                                 "Net Deep Percolation")) +
   theme_minimal(base_size = 13) +
-  theme(legend.position = c(0.18, 0.75), panel.grid.minor = element_blank(),
-        legend.background = element_rect(fill = "white", color = "transparent")) +
+  theme(legend.position = c(0.15, 0.77), 
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.background = element_rect(fill = "white", color = "transparent"),
+        legend.text = element_text(size = 9),
+        legend.title = element_text(size = 11),
+        legend.key.size = unit(.5, "cm")) +
+  coord_cartesian(ylim = c(0,4000)) +
   facet_wrap(~class, ncol = 2)
 
 p2
 # save
-#ggsave("results/p_ec2.pdf", p2, height= 4, width = 7, device = cairo_pdf)
+ggsave("C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/results/p_ec2.pdf", p2, height= 4, width = 7, device = cairo_pdf)
 
 
 
@@ -809,15 +824,21 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
                 position=position_dodge(.9)) +
   scale_fill_viridis_d("Source", option = "E") +
   theme_minimal(base_size = 13) +
-  theme(legend.position = c(0.20, 0.75), panel.grid.minor = element_blank(),
-        legend.background = element_rect(fill = "white", color = "transparent")) +
+  theme(legend.position = c(0.16, 0.785), 
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.background = element_rect(fill = "white", color = "transparent"),
+        legend.text = element_text(size = 9),
+        legend.title = element_text(size = 11),
+        legend.key.size = unit(.5, "cm")) +
   #theme(legend.position = "bottom") +
   labs(x = "Time (yrs)", y = "Annual mass (Metric Mtons)") +
   facet_wrap(~class, ncol = 2) +
-  scale_y_continuous(label = comma)
+  scale_y_continuous(label = comma) +
+  coord_cartesian(ylim = c(0,12))
 
 p3
-# ggsave("results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
+ggsave("C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
 
 
 
@@ -922,7 +943,7 @@ anim <- ggplot(temp6, aes(depth, value)) +
   transition_time(t) + 
   ease_aes("linear")
 
-#anim_save("results/salinization.gif", anim) # save to root
+anim_save("C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/results/salinization.gif", anim) # save to root
 
 
 
