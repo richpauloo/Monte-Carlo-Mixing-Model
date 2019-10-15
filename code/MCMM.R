@@ -696,7 +696,7 @@ p <- df3 %>%
         panel.spacing = unit(0.75, "cm"))
  
 p
-ggsave(p, filename = "~/GitHub/Monte-Carlo-Mixing-Model/results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
+#ggsave(p, filename = "~/GitHub/Monte-Carlo-Mixing-Model/results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
 
 
 
@@ -810,7 +810,7 @@ p2 <- ggplot(filter(EC_dat2, time %in% c(0,50,100,150)), aes(x=time, y=mean, fil
 
 p2
 # save
-ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_ec2.pdf", p2, height= 4, width = 7, device = cairo_pdf)
+#ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_ec2.pdf", p2, height= 4, width = 7, device = cairo_pdf)
 
 
 
@@ -915,7 +915,7 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
   coord_cartesian(ylim = c(0,10))
 
 p3
-ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
+#ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
 
 
 
@@ -1021,7 +1021,7 @@ anim <- ggplot(temp6, aes(depth, value)) +
   ease_aes("linear") +
   theme(panel.grid.minor = element_blank())
 
-anim_save("~/GitHub/Monte-Carlo-Mixing-Model/results/salinization.gif", anim) # save to root
+#anim_save("~/GitHub/Monte-Carlo-Mixing-Model/results/salinization.gif", anim) # save to root
 
 
 
