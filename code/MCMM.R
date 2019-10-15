@@ -20,17 +20,17 @@ library(tidyr)
 ####################################################################################
 
 # Groundwater budget (10/31/1961-9/30/2001)
-GW = read.csv(file = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/data/GW.csv", stringsAsFactors = FALSE, header = TRUE) 
+GW = read.csv(file = "~/GitHub/Monte-Carlo-Mixing-Model/data/GW.csv", stringsAsFactors = FALSE, header = TRUE) 
 
 # Land Budget budget (10/31/1961-9/30/2001)
-LB = read.csv(file = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/data/LB.csv", stringsAsFactors = FALSE, header = TRUE)
+LB = read.csv(file = "~/GitHub/Monte-Carlo-Mixing-Model/data/LB.csv", stringsAsFactors = FALSE, header = TRUE)
 
 # Root Zone budget (10/31/1961-9/30/2001)
-RZ = read.csv(file = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/data/RZ.csv", stringsAsFactors = FALSE, header = TRUE) 
+RZ = read.csv(file = "~/GitHub/Monte-Carlo-Mixing-Model/data/RZ.csv", stringsAsFactors = FALSE, header = TRUE) 
 
 # Bring in boundary condition data and RWI from dissertation/code/02_reanalyze_gw_tds.R 
 
-boundary_dat <- readRDS("C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/data/boundary_dat.rds")
+boundary_dat <- readRDS("~/GitHub/Monte-Carlo-Mixing-Model/data/boundary_dat.rds")
 bd <- boundary_dat %>% dplyr::select(x,y) %>% 
   mutate(x = abs(x) * 3.28084) %>% # convert m to ft for model
   arrange(x) %>% 
@@ -49,6 +49,14 @@ af_to_L = function(a){
 # converts miligrams to million tons
 mg_to_Mton = function(a){
   a / (1000*907185*1000000)
+}
+
+# converts Mtons to metric metric tons (NOT metric Mtons)
+Mtons_to_metric_tons <- function(x){return(x * 907184.74)}
+
+# acre feet to km3
+af_to_km3 <- function(a){
+  a * 43560 * 28.3168 * 1e-12
 }
 
 
@@ -75,7 +83,7 @@ dv23 = -0.01772 # Darcy velocity between centroids of layers 2-3 (ft/yr)
 DP     = sum(GW$DP) # deep percolation
 Si     = sum(GW$Si) # beginning storage
 Sf     = sum(GW$Sf) # ending storage
-NDP    = sum(GW$NDP) # net deep percolation
+NDP    = sum(GW$DP) # net deep percolation
 Stream = sum(GW$Stream) # stream gain
 R      = sum(GW$R) # recharge
 Lake   = sum(GW$Lake) # lake gain
@@ -83,6 +91,9 @@ BI     = sum(GW$BI) # sum(GW$Si) boundary inflow
 Sub    = sum(GW$Sub) # subsidence flow
 P      = sum(GW$P) # GW pumping
 SI     = sum(GW$Net.Subsurface.Inflow....) # subsurface inflow
+
+# sanity check: average annual Delta S of groundwater system:
+af_to_km3(R + Stream + Lake + BI + Sub + SI + NDP - P)/40
 
 # spatial/temporal dimensions
 Dim = data.frame(subregion = seq(14,21,1), 
@@ -106,7 +117,7 @@ Tot_V          = af_to_L(sum(V))
 SA_w_thickness = sum(Dim$SA/Tot_SA*Dim$thickness) 
 
 # percent aquifer
-pa = 0.989
+#pa = 0.989
 
 # time step length (years)
 t = 50
@@ -144,25 +155,64 @@ gwc <- sum(sw$vwc)
 ####################################################################################
 
 # C2VSim average annual fluxes from GW budget
-annual_fluxes = data.frame(term = c("NDP", "Stream", "R", "Lake", "BI", "Sub", "P", "SI"),
+annual_fluxes = data.frame(term = c("NDP", "Stream", "R", "Lake", "BI", "Sub", "P", "SI", "P_alt", "M"),
                            "L/yr" = c(af_to_L(NDP/l), af_to_L(Stream/l), af_to_L(R/l), 
                                       af_to_L(Lake/l), af_to_L(BI/l), af_to_L(Sub/l), 
-                                      af_to_L(P/l), af_to_L(SI/l)))
-annual_fluxes$TDS = c(0,gwc,gwc,gwc,gwc,gwc,0,gwc) # TDS
+                                      af_to_L(P/l), af_to_L(SI/l), NA, NA))
+
+
+# eliminate overdraft (delta S = 0)
+# first calculate the volume to eliminate: (1) pumping, and 
+# (2) subsidence flow, which should not exist in a steady state system)
+od <- sum(annual_fluxes$L.yr[c(1:5,8)]) - sum(annual_fluxes$L.yr[6:7]) # overdraft
+od
+
+# managed aquifer recharge at 0.32 dS following (Hanak, 2019):
+M <- 0.32 * od * -1
+
+# new Pumping (P_alt) = R + B + M + I + N percentage reduction in Pumping to stop overdraft
+P_alt <- sum(annual_fluxes[c(1:5,8), 2]) + abs(M)
+P_alt_prop <- P_alt / annual_fluxes[7,2] 
+
+# sanity check for steady state conditions (no overdraft)
+sum(annual_fluxes$L.yr[c(1:5,8)]) + M - P_alt
+
+# add P_alt and M to `layer_fluxes`
+annual_fluxes[9,  2] = P_alt
+annual_fluxes[10, 2] = M
+
+
+# calculate flux volume into top layer to enforce steady state conditions
+# 50 yr Q from M, N, B, R (recharge from streams, lakes, and watersheds)
+top_q  <- sum(annual_fluxes[c(1:4, 10), 2]) * 50 
+
+# calculate flux volume into layers 2:m 
+# only subsurface inflow because we eliminate overdraft. minimal term
+side_q <- annual_fluxes[8,2] * 50
+
+
+
+####################################################################################
+
+# assign TDS to static terms (i.e. - constant mass flux throught simulation)
+annual_fluxes$TDS = c(0,gwc,gwc,gwc,gwc,gwc,0,gwc,0,0) # TDS
 annual_fluxes$mass_flux = annual_fluxes$L.yr * annual_fluxes$TDS # mass flux (mg/yr)
 
-# Internal mass flux
-internal_mf = (annual_fluxes[5,4] + annual_fluxes[6,4] + annual_fluxes[8,4])*t # mg/50 yr 
+# Internal mass flux: 
+# only from subsurface inflow because subsidence flow eliminated
+internal_mf = sum(annual_fluxes[8, 4]) * t # mg/50 yr 
 
-# Top down Mass Flux
-top_mf = (annual_fluxes[2,4] + annual_fluxes[3,4] + annual_fluxes[4,4])*t # mg/50 yr 
+# Top down Mass Flux:
+# not including NDP, the mass of which is dynamically calculated in
+# the loop to account for evapoconcentration
+top_mf = sum(annual_fluxes[c(2:5,10), 4]) * t # mg/50 yr 
 
 # Root Zone Budget (includes Agriculture, Urban, and Native Vegetation)
 I  = sum(RZ$AG_INF) + sum(RZ$URB_INF) + sum(RZ$NAT_INF) # Net infiltration
 ET = sum(RZ$AG_ET) + sum(RZ$URB_ET) + sum(RZ$NAT_ET) # Net ET
 
 # Percentages
-#pI   = NDP/I # percentage of infiltration that becomes NDP
+pI   = NDP/I # percentage of infiltration that becomes NDP
 #pGWP = P/I # Percentage of groundwater pumping in Total Applied Water
 pGWP = (sum(LB$Ag..Pumping) + sum(LB$Urban.Pumping)) / 
   (sum(LB$Ag..Pumping)   + sum(LB$Ag..Diversion) + 
@@ -197,17 +247,15 @@ TDS_SW <- sum(sw$vwc) # final concentration of surface water input
 # sanity check: matches 5.54 km3/yr mass balance in Table S1
 V_SW = (sum(LB$Ag..Diversion) + sum(LB$Urban.Diversion))/40 
 SW_annual_mass = mg_to_Mton(af_to_L(V_SW) * TDS_SW) # Mton
-
+Mtons_to_metric_tons(SW_annual_mass) / 1e6
 
 ## Number of Monte Carlo Samples
 ###### This number determines how many random samples are drawn from the input parameters modeled as distributions of a random variable. 1000 samples is standard.
 N = 1000
 
-
-
 ## Compute all output  
 
-run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
+run_model <- function(irg_eff, RWI_on, N){
   
   # set up model arrays
   TDS                  = array(0, dim=c(8,8,N)) # TDS array
@@ -230,16 +278,16 @@ run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
     #n = 0.30
     
     # Random Variables
-    n    = runif(1, min = porosity[1], max = porosity[2]) # porosity
-    pa   = runif(1, min = percent_aq[1], max = percent_aq[2]) # percent aquifer
+    n    = 0.3 #runif(1, min = porosity[1], max = porosity[2]) # porosity
+    pa   = 0.990 # percent aquifer
     aVol = Tot_V * n * pa # saturated aquifer volume (L)
     pI   = runif(1, min = 1-irg_eff[2], max = 1-irg_eff[1]) # irrigation efficiency
     RWI  = runif(1, min = Williamson, max = Kang)  # Rock water interactions (TDS/ft)
     
     
     # velocity field from C2VSim
-    v12    = 0.76106/n # linear pore velocity between centroids of layers 1-2 (ft/yr)
-    v23    = -0.01772/n # linear pore velocity between centroids of layers 2-3 (ft/yr)
+    v12    = 0.76106/(n*pa) # linear pore velocity between centroids of layers 1-2 (ft/yr)
+    v23    = -0.01772/(n*pa) # linear pore velocity between centroids of layers 2-3 (ft/yr)
     vel    = c(v12,v23) # vector of velocities
     #0.5*(mean(dd$c1) + mean(dd$c2)); 0.5*(mean(dd$c2) + mean(dd$c3))
     #c(447,924)#
@@ -248,38 +296,22 @@ run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
     l      = lm(depths~vel, data = vel) # create a linear model between velocity and depth
     
     
-    
     # vertical velocity profile
     v    = matrix(0,8,1) # initalize vector to hold computed velocities at various depths
     b    = matrix(0,8,1) # initalize vector to hold layer thicknesses, computed from groundwater velocity
-    v[1] = (0 + -coef(l)[[1]]) / coef(l)[[2]] # compute first velocity
+    v[1] = ( (0 + -coef(l)[[1]]) / coef(l)[[2]] ) * P_alt_prop # compute first velocity
     b[1] = -(v[1] * t) # compute first layer thickness
     
     # compute all remaining layer velocities and thicknesses
     for(i in 1:7){
-      v[i+1] = (sum(b) -coef(l)[[1]]) / coef(l)[[2]]
-      b[i+1] = -(v[i+1] * t)
+      v[i+1] = ( (sum(b) -coef(l)[[1]]) / coef(l)[[2]] ) * P_alt_prop
+      b[i+1] = -(v[i+1] * t) 
     }
     
-    # Vertical Flux per layer (L/yr)
-    Q = v * n * pa * Tot_SA * 43560 * 28.3168 # L/yr
-    layer_fluxes = cbind(v, Q) # units of "ft/yr" and "L/yr" respectively
     
     # layer thickness (ft)
     b[8] = -(SA_w_thickness + sum(b[1:7]))
     pb   = abs(b)/SA_w_thickness # percentage of total thickness per layer
-    
-    # layer volumes (L)
-    lay_vol[,1,k] = aVol * pb # saturated volume of all layers (L)
-    
-    
-    
-    # Calculate Pumping in each layer
-    lay_pump = matrix(0,8,1)
-    for(i in 1:7){
-      lay_pump[i,1] = b[i]/sum(b) * annual_fluxes[7,2] # proportion pumping from each layer (L/yr)
-    }
-    
     
     
     # Calculate the layer depths
@@ -288,6 +320,40 @@ run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
     for(i in 2:8){
       layer_depths[i,1] = abs(layer_depths[i-1,1]) + abs(b[i]) # vector of layer depths (ft)
     }
+    
+    # layer volumes (L)
+    lay_vol[,1,k] = aVol * pb # saturated volume of all layers (L)
+    
+    
+    # Calculate proportion Pumping in each layer (using P_alt)
+    # most pumping occurs in the deep aquifer
+    lay_pump = matrix(0,8,1)
+    for(i in 1:8){
+      lay_pump[i,1] = b[i]/sum(b) * annual_fluxes[9,2] 
+    }
+    
+    
+    # Vertical Flux per layer (L/yr)
+    # based on velocity alone, these fluxes would occur with NO OTHER
+    # inputs and outputs to the system
+    Q = v * n * pa * Tot_SA * 43560 * 28.3168 # L/yr
+    layer_fluxes = cbind(v, Q) # units of "ft/yr" and "L/yr" respectively
+    
+    # to enforce steady state conditions, the layer to layer fluxes 
+    # are the resudual of all other fluxes between the layers
+    # for layer 1, Q_{in} from the top is `top_q` and must equal Q_{out},
+    # which = P + Q_{1,2}. Q_{1,2} is the closure term.
+    # Thus Q_{1,2} is Q_{in} - P_{1} (pumping in layer 1):
+    q12 <- top_q - (lay_pump[1] * t) # 50 year in minus out
+    z <- vector()                     # vector of layer to layer fluxes
+    z[1] <- q12                       # initalize with Q_{1,2}
+    for(i in 2:8){                    # solve for Q_{m-1,m}
+      z[i] <- (z[i-1] + side_q) -     # in minus...
+        (lay_pump[i] * t)             # out, over 50 yr time step
+    }
+    
+    # store layer to layer fluxes
+    layer_fluxes <- cbind(layer_fluxes, z)
     
     
     
@@ -334,34 +400,39 @@ run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
       # top down mass flux, PLUS
       # internal mass flux, PLUS
       # mass from NDP, MINUS
-      # fluxes passed out of layer, MINUS
+      # mass flux into layer below, MINUS
       # Pumping... ALL DIVIDED BY
       # the Volume of layer 1   
-      TDS[1,j+1,k] = ((TDS[1,j,k]*lay_vol[1,1,k] +       
-                         top_mf + +                        
-                         internal_mf*pb[1] +              
-                         NDP_mf[j,1,k]*t -                 
-                         TDS[1,j,k]*layer_fluxes[2,2]*t -  
-                         TDS[1,j,k]*lay_pump[1,1]*t) /     
-                        
-                        lay_vol[1,1,k])                  
+      TDS[1,j+1,k] = (
+        (
+          TDS[1,j,k]    * lay_vol[1,1,k] +       
+          top_mf +                         
+          #internal_mf   * pb[1] +              
+          NDP_mf[j,1,k] * t -                 
+          TDS[1,j,k]    * layer_fluxes[1,3]  -  
+          TDS[1,j,k]    * lay_pump[1,1] * t
+          ) /
+          lay_vol[1,1,k]
+      )                  
       
       # TDS in layers 2-7 is...
       # initial mass, PLUS
       # internal mass flux, PLUS  
-      # fluxes passes into layers, MINUS  
+      # mass flux from layer above, MINUS  
       # Pumping, MINUS
-      # fluxes passed out of layers, ALL DIVDED BY  
+      # mass flux into layer below, ALL DIVDED BY  
       # the layer volume
       for(i in 2:7){
-        TDS[i,j+1,k] = ((TDS[i,j,k]*lay_vol[i,1,k] +         
-                           internal_mf*pb[i] +                 
-                           TDS[i-1,j,k]*layer_fluxes[i,2]*t -   
-                           TDS[i,j,k]*lay_pump[i,1]*t -        
-                           TDS[i,j,k]*layer_fluxes[i+1,2]*t) / 
-                          
-                          lay_vol[i,1,k])                     
-        
+        TDS[i,j+1,k] = (
+          (
+            TDS[i,j,k]   * lay_vol[i,1,k] +         
+            internal_mf  * pb[i] +                 
+            TDS[i-1,j,k] * layer_fluxes[i-1,3] -   
+            TDS[i,j,k]   * lay_pump[i,1] * t -        
+            TDS[i,j,k]   * layer_fluxes[i,3]
+            ) / 
+            lay_vol[i,1,k]
+        )                     
       }
       
       # baseline correction from rock water interactions 
@@ -401,16 +472,12 @@ run_model <- function(porosity, percent_aq, irg_eff, RWI_on, N){
 # evaluate the model with and without RWI
 ##########################################################################
 # with RWI
-z1 <- run_model(porosity = c(0.2999, 0.3),
-                percent_aq = c(0.4, 0.5),
-                irg_eff = c(0.71, 0.73),
+z1 <- run_model(irg_eff = c(0.778, 1-pI),
                 RWI_on = TRUE, 
                 N = 1000)
 
 # without RWI
-z2 <- run_model(porosity = c(0.2999, 0.3),
-                percent_aq = c(0.4, 0.5),
-                irg_eff = c(0.71, 0.73),
+z2 <- run_model(irg_eff = c(0.778, 1-pI),
                 RWI_on = FALSE, 
                 N = 1000)
 
@@ -587,39 +654,49 @@ df3 <- bind_rows(df, df2) %>% mutate(sim2 = paste0(as.character(sim), "_", rwi))
 p <- df3 %>% 
   filter(time %in% c("t = 50", "t = 100", "t = 200", "t = 250", "t = 300") & 
            sim %in% 1:250) %>% 
-  ggplot(aes(-d, tds)) + 
-  geom_line(aes(-d, tds, color = sim2), alpha = 0.2, lwd = 0.4) +
+  group_by(dc, time, rwi) %>% 
+  summarise(md = median(d), p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75)) %>% 
+  ggplot(aes(-md)) +
+  geom_ribbon(aes(ymin = p25, ymax=p75, group = rwi), fill = "grey70", alpha = 0.8) + 
+  #ggplot(aes(-d, tds)) + 
+  #geom_line(aes(-d, tds, color = sim2), alpha = 0.2, lwd = 0.4) +
   # RWI == TRUE: purple
-  geom_smooth(data = filter(df,
-                            time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") &
-                              sim %in% 1:1000), # capture overall trend
-              aes(-d, tds),
-              color = "#440154ff",
-              se = FALSE) +
+  geom_line(data = filter(df,
+                            time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300")) %>% 
+                group_by(dc, time) %>% 
+                summarise(mtds = median(tds),
+                          md   = median(d)), 
+              aes(-md, mtds),
+              color = "#440154ff", 
+            lwd = 0.8) +
   # RWI == FALSE: blue
-  geom_smooth(data = filter(df2,
-                            time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") &
-                              sim %in% 1:1000), # capture overall trend
-              aes(-d, tds),
-              color = "#21908dff",
-              se = FALSE,
-              span = 0.01) +
+  geom_line(data = filter(df2,
+                          time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300")) %>% 
+              group_by(dc, time) %>% 
+              summarise(mtds = mean(tds),
+                        md   = median(d)) , 
+              aes(-md, mtds), 
+              color = "#21908dff", 
+            lwd = 0.8) +
   geom_hline(yintercept = 1000, linetype = "dashed") +
   scale_color_grey() + 
   guides(color = FALSE) + 
-  coord_flip(ylim = c(-0, 4000))+#21000)) + 
+  coord_flip(ylim = c(-0, 3500))+#21000)) + 
   theme_minimal() + 
   facet_wrap(~time, labeller = as_labeller(ll)) +
   # scale_y_continuous(breaks = c(0, 5000, 10000),#, 15000, 20000), 
   #                    labels = c('0', '5,000', '10,000'))+#, '15,000', '20,000')) + 
-  scale_y_continuous(breaks = c(0, 1000, 2000, 3000, 4000), 
-                     labels = c('0', '1,000', '2,000', '3,000', '4,000')) + 
+  scale_y_continuous(breaks = c(0, 1000, 2000, 3000), 
+                     labels = c('0', '1,000', '2,000', '3,000')) + 
+  scale_x_continuous(breaks = c(-50, -100, -150, -200, -250), 
+                     labels = c('-50', '-100', '-150', '-200', '-250')) + 
   labs(x = "Depth (m)", y = "TDS (mg/L)")  +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.grid.minor = element_blank())
+        panel.grid.minor = element_blank(),
+        panel.spacing = unit(0.75, "cm"))
  
 p
-#ggsave(p, filename = "C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
+ggsave(p, filename = "~/GitHub/Monte-Carlo-Mixing-Model/results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
 
 
 
@@ -641,12 +718,12 @@ for(i in 1:7){
   AW_mean[i,1]   = mean(z1$TDS_AW[i,1,])
   EC_mean[i,1]   = mean(z1$EC[i,1,])
   EC_median[i,1] = median(z1$EC[i,1,])
-  GWP_5[i,1]     = quantile(z1$TDS_GWP[i,1,], c(0.05))
-  GWP_95[i,1]    = quantile(z1$TDS_GWP[i,1,], c(0.95))
-  AW_5[i,1]      = quantile(z1$TDS_AW[i,1,], c(0.05))
-  AW_95[i,1]     = quantile(z1$TDS_AW[i,1,], c(0.95))
-  EC_5[i,1]      = quantile(z1$EC[i,1,], c(0.05))
-  EC_95[i,1]     = quantile(z1$EC[i,1,], c(0.95))
+  GWP_5[i,1]     = quantile(z1$TDS_GWP[i,1,], c(0.25))
+  GWP_95[i,1]    = quantile(z1$TDS_GWP[i,1,], c(0.75))
+  AW_5[i,1]      = quantile(z1$TDS_AW[i,1,], c(0.25))
+  AW_95[i,1]     = quantile(z1$TDS_AW[i,1,], c(0.75))
+  EC_5[i,1]      = quantile(z1$EC[i,1,], c(0.25))
+  EC_95[i,1]     = quantile(z1$EC[i,1,], c(0.75))
 }
 
 ## compile stats for TDS of pumped GW, Total Applied Water (GW+SW), and Evaporative concentration of NDP
@@ -680,12 +757,12 @@ for(i in 1:7){
   AW_mean[i,1]   = mean(z2$TDS_AW[i,1,])
   EC_mean[i,1]   = mean(z2$EC[i,1,])
   EC_median[i,1] = median(z2$EC[i,1,])
-  GWP_5[i,1]     = quantile(z2$TDS_GWP[i,1,], c(0.05))
-  GWP_95[i,1]    = quantile(z2$TDS_GWP[i,1,], c(0.95))
-  AW_5[i,1]      = quantile(z2$TDS_AW[i,1,], c(0.05))
-  AW_95[i,1]     = quantile(z2$TDS_AW[i,1,], c(0.95))
-  EC_5[i,1]      = quantile(z2$EC[i,1,], c(0.05))
-  EC_95[i,1]     = quantile(z2$EC[i,1,], c(0.95))
+  GWP_5[i,1]     = quantile(z2$TDS_GWP[i,1,], c(0.25))
+  GWP_95[i,1]    = quantile(z2$TDS_GWP[i,1,], c(0.75))
+  AW_5[i,1]      = quantile(z2$TDS_AW[i,1,], c(0.25))
+  AW_95[i,1]     = quantile(z2$TDS_AW[i,1,], c(0.75))
+  EC_5[i,1]      = quantile(z2$EC[i,1,], c(0.25))
+  EC_95[i,1]     = quantile(z2$EC[i,1,], c(0.75))
 }
 
 # RWI: rerun with RWI
@@ -695,7 +772,7 @@ EC_dat_nrwi = data.frame("legend"=rep(c("A","B","C"), each=7),
                          "p5" = rbind(GWP_5, AW_5, EC_5),
                          "p95" = rbind(GWP_95, AW_95, EC_95))
 colnames(EC_dat_nrwi) = c("legend","time","mean","p5", "p95")
-EC_dat_nrwi$class <- "No Rock-water interactions"
+EC_dat_nrwi$class <- "No rock-water interactions"
 #EC_dat_nrwi$class <- ""
 
 # combine
@@ -726,19 +803,19 @@ p2 <- ggplot(filter(EC_dat2, time %in% c(0,50,100,150)), aes(x=time, y=mean, fil
         legend.text = element_text(size = 9),
         legend.title = element_text(size = 11),
         legend.key.size = unit(.5, "cm")) +
-  coord_cartesian(ylim = c(0,4000)) +
+  coord_cartesian(ylim = c(0,7100)) +
+  scale_y_continuous(breaks = c(0,1000,3000,5000,7000), 
+                     labels = formatC(c(0,1000,3000,5000,7000), big.mark=",")) +
   facet_wrap(~class, ncol = 2)
 
 p2
 # save
-ggsave("C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/results/p_ec2.pdf", p2, height= 4, width = 7, device = cairo_pdf)
+ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_ec2.pdf", p2, height= 4, width = 7, device = cairo_pdf)
 
 
 
 
 # Plot 3: Salt Budget for Water Budget terms and NDP
-
-Mtons_to_metric_tons <- function(x){return(x * 907184.74)}
 
 ## non:constant mass: extract all GW pumping TDS and convert to mass
 gwp <- gwp2 <- vector("list", length = 7)
@@ -771,11 +848,11 @@ df1 <- data.frame(m = rep(c(swm, all_else), each = 7),
                   type = rep(c("surface_water_import", "all_else"), each = 7)) 
 df2 <- select(gwp, m, t, type) %>% 
   group_by(t) %>% 
-  summarise(median = median(m), p5 = quantile(m, 0.05), p95 = quantile(m, 0.95))
+  summarise(median = median(m), p5 = quantile(m, 0.25), p95 = quantile(m, 0.75))
 
 df2b <- select(gwp2, m, t, type) %>% 
   group_by(t) %>% 
-  summarise(median = median(m), p5 = quantile(m, 0.05), p95 = quantile(m, 0.95))
+  summarise(median = median(m), p5 = quantile(m, 0.25), p95 = quantile(m, 0.75))
 
 df1$p5  <- NA
 df1$p95 <- NA
@@ -787,7 +864,7 @@ mg_to_metric_tons <- function(x){return(x * 1e-9)}
 
 #RWI_cont[7,1,] <- RWI_cont[1,1,]
 RWI_int <- mg_to_metric_tons(colSums((z1$RWI_cont[1:7,1,]*z1$lay_vol[1:7,1,])/50)) %>% 
-  quantile(c(0.05, 0.5, 0.95))
+  quantile(c(0.25, 0.5, 0.75))
 df3 <- data.frame(m = RWI_int[2], t = 1:7, type = "rwi", p5 = RWI_int[1], p95 = RWI_int[3])
 
 df4 <- rbind.data.frame(df1, df2, df3)
@@ -824,7 +901,7 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
                 position=position_dodge(.9)) +
   scale_fill_viridis_d("Source", option = "E") +
   theme_minimal(base_size = 13) +
-  theme(legend.position = c(0.16, 0.785), 
+  theme(legend.position = c(0.16, 0.77), 
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank(),
         legend.background = element_rect(fill = "white", color = "transparent"),
@@ -834,11 +911,11 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
   #theme(legend.position = "bottom") +
   labs(x = "Time (yrs)", y = "Annual mass (Metric Mtons)") +
   facet_wrap(~class, ncol = 2) +
-  scale_y_continuous(label = comma) +
-  coord_cartesian(ylim = c(0,12))
+  scale_y_continuous(breaks = seq(0,10,2), labels = as.character(seq(0,10,2))) +
+  coord_cartesian(ylim = c(0,10))
 
 p3
-ggsave("C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
+ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
 
 
 
@@ -867,8 +944,8 @@ TDS_5  = matrix(0,7,8)
 TDS_95 = matrix(0,7,8)
 for(d in 1:7){
   for(t in 1:8){
-    TDS_5[d,t]  = quantile(z2$TDS[d,t,], c(0.05)) # 5% CI
-    TDS_95[d,t] = quantile(z2$TDS[d,t,], c(.95))  # 95% CI
+    TDS_5[d,t]  = quantile(z2$TDS[d,t,], c(0.25)) # 5% CI
+    TDS_95[d,t] = quantile(z2$TDS[d,t,], c(.75))  # 95% CI
   }
 }
 
@@ -936,14 +1013,15 @@ anim <- ggplot(temp6, aes(depth, value)) +
   #aes(x = x1, y = y1, xend = x2, yend = y2),
   #arrow = arrow(length = unit(0.03, "npc")),
   #curvature = -0.4) +
-  scale_y_continuous(labels = comma) +
-  theme_minimal(base_size = 14) +
+  scale_y_continuous(labels = comma, limits = c(0,2500)) +
+  theme_minimal(base_size = 16) +
   labs(title = 'Time: {round(frame_time, 2)} yrs ({1960 + round(frame_time, 0)})', 
        y = "TDS (mg/L)", x = "Depth (m)") + 
   transition_time(t) + 
-  ease_aes("linear")
+  ease_aes("linear") +
+  theme(panel.grid.minor = element_blank())
 
-anim_save("C:/Users/rpauloo/Documents/GitHub/Monte-Carlo-Mixing-Model/results/salinization.gif", anim) # save to root
+anim_save("~/GitHub/Monte-Carlo-Mixing-Model/results/salinization.gif", anim) # save to root
 
 
 
