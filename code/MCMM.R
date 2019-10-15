@@ -901,7 +901,7 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
                 position=position_dodge(.9)) +
   scale_fill_viridis_d("Source", option = "E") +
   theme_minimal(base_size = 13) +
-  theme(legend.position = c(0.16, 0.77), 
+  theme(legend.position = c(0.16, 0.74), 
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank(),
         legend.background = element_rect(fill = "white", color = "transparent"),
@@ -917,9 +917,15 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
 p3
 #ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
 
+##########################################################################
+# combine plots 2 and 3
+p3b <- p3 + labs(x=NULL) 
+p2b <- p2 + theme(strip.background = element_blank(),
+                  strip.text = element_blank())
+p23 <- cowplot::plot_grid(p3b, p2b, align = "hv", ncol = 1)
+#ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p23.pdf", p23, height= 8, width = 7, device = cairo_pdf)
 
-
-
+##########################################################################
 # GIF for github
 # mean TDS
 TDS_mean = as.data.frame(matrix(0,8,8))
