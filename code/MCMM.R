@@ -922,7 +922,7 @@ p3
 p3b <- p3 + labs(x=NULL) 
 p2b <- p2 + theme(strip.background = element_blank(),
                   strip.text = element_blank())
-p23 <- cowplot::plot_grid(p3b, p2b, align = "hv", ncol = 1)
+p23 <- cowplot::plot_grid(p3b, p2b, align = "hv", ncol = 1, labels = c("(A)","(B)"))
 #ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p23.pdf", p23, height= 8, width = 7, device = cairo_pdf)
 
 ##########################################################################
