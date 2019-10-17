@@ -36,13 +36,12 @@ The model depends on 4 input files, found in `data`
  - `GW.csv` - C2VSim 40 year groundwater budget  
  - `LB.csv` - C2VSim 40 year Land Zone budget  
  - `RZ.csv` - C2VSim 40 year Root Zone budget  
+ - `CVStrat.dat` - C2VSim stratigraphy
  
-Model results are summarized into 3 plots and printed as PDF files by the model script `MCMM.R`. It is necessary to uncomment the lines of code that write these PDFs. To obtain the actual arrays of model output, it is necessary to run the model to bring these objects into memory.  
+The 40 year period for all water budgets are from 1961-10-31 : 2001-09-30, and begin in October at the start of the water year.  Model results are summarized into 3 plots and printed as PDF files by the model script `MCMM.R`. It is necessary to uncomment the lines of code that write these PDFs. To obtain the actual arrays of model output, it is necessary to run the model to bring these objects into memory.  
 
+The [C2VSim Version 3.02-CG (R374)](http://baydeltaoffice.water.ca.gov/modeling/hydrology/C2VSim/index_C2VSIM.cfm) model can be accessed at the preceeding link, or unzipped from `/data/c2vsim_cg_1972ic_r374_rev.zip`.
 
-## Notes  
- - The 40 year period for all data is from 1961-10-31 : 2001-09-30, and begins on October, the start of the water year.  
- - Water budgets are derived from [C2VSim Version 3.02-CG (R374)](http://baydeltaoffice.water.ca.gov/modeling/hydrology/C2VSim/index_C2VSIM.cfm)  
 
 ## Software
 
