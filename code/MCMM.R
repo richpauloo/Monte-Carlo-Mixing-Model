@@ -13,6 +13,9 @@ library(ggplot2)
 library(grid)
 library(gridExtra)
 library(tidyr)
+library(kableExtra)
+library(knitr)
+library(xtable)
 
 
 ####################################################################################
@@ -57,6 +60,11 @@ Mtons_to_metric_tons <- function(x){return(x * 907184.74)}
 # acre feet to km3
 af_to_km3 <- function(a){
   a * 43560 * 28.3168 * 1e-12
+}
+
+# liters to km3
+l_to_km3 <- function(l){
+  l * 1e-12
 }
 
 
@@ -268,6 +276,7 @@ run_model <- function(irg_eff, RWI_on, N){
   NDP_mf               = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
   RWI_cont             = array(0, dim=c(8,1,N)) # array of Rock water interactions
   lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
+  cbc                  = vector("list", length=N)
   
   # loop over N realizations
   for(k in 1:N){
@@ -364,15 +373,14 @@ run_model <- function(irg_eff, RWI_on, N){
     layer_fluxes <- cbind(layer_fluxes, z)
     
     # arrange table of layer to layer fluxes
-    data.frame(p = lay_pump, 
-               qc = z/t, 
-               r = c(sum(annual_fluxes[2:4, 2]), rep(NA, 7)),
-               n = c(annual_fluxes[1,2], rep(NA, 7)),
-               b = c(annual_fluxes[5,2], rep(NA, 7)),
-               m = c(annual_fluxes[10,2], rep(NA, 7)),
-               i = c(annual_fluxes[8,2], rep(NA, 7)))
-    
-    
+    cbc[[k]] <- data.frame(p = -lay_pump, 
+                           qc = z/t, 
+                           r = c(sum(annual_fluxes[2:4, 2]), rep(NA, 7)),
+                           n = c(annual_fluxes[1,2], rep(NA, 7)),
+                           b = c(annual_fluxes[5,2], rep(NA, 7)),
+                           m = c(annual_fluxes[10,2], rep(NA, 7)),
+                           i = lay_si) %>% 
+      mutate_all(l_to_km3)
     
     # Initalize TDS array with baseline TDS
     #t0 = layer_depths * RWI # inital TDS-depth profile from RWI
@@ -477,7 +485,8 @@ run_model <- function(irg_eff, RWI_on, N){
               EC                   = EC,
               NDP_mf               = NDP_mf,
               RWI_cont             = RWI_cont,
-              lay_vol              = lay_vol) 
+              lay_vol              = lay_vol,
+              cbc                  = cbc) 
   
   return(res)
   
@@ -499,8 +508,64 @@ z2 <- run_model(irg_eff = c(0.778, 1-pI),
                 N = 1000)
 
 
+##########################################################################
+# cell by cell budget. sanity check - steady state
+# since eta and f are fixed, so also is b, and thus all cbc budgets are =
+# thus we take the first result
+# the code is set up this way in case we want to vary the parameters that
+# control aquifer thickness (eta, f)
+
+cbc <- z1$cbc[[1]]
+
+# layer 1
+cbc1 <- tibble(term = colnames(cbc),
+           q    = unlist(slice(cbc, 1), use.names = FALSE)) %>% 
+  slice(-7) %>% 
+  mutate(q = ifelse(term == "qc", q * -1, q))
+
+# sanity check: steady state
+pull(cbc1, q) %>% sum()
+cbc1$term <- c("P{alt, 1}", "q{1,2}", "R", "N", "B", "M")
+cbc1 <- cbc1[c(4,3,5,6,1,2), ]
+cbc1 <- bind_rows(cbc1, data.frame(term = "dS", q = sum(cbc1$q)))
+
+# layers 2:m
+cbc_in <- select(cbc, p, qc, i)
+cbc2 <- vector("list", length=6)
+for(i in 1:length(cbc2)){
+  counter <- i + 1
+  cbc_i <- tibble(term = c(colnames(cbc_in), "qc_in"),
+         q    = c(unlist(slice(cbc_in, counter), use.names = FALSE),
+                  cbc_in$qc[i])) 
+  cbc_i$q[2] <- cbc_i$q[2] * -1
+  cbc_i <- bind_rows(cbc_i, data.frame(term = "dS", q = sum(cbc_i$q)))
+  
+  cbc_i$term <- c(paste0("P{alt, ", counter, "}"), 
+                  paste0("q{", counter, ",", counter + 1, "}"),
+                  paste0("I", counter),
+                  paste0("q{", i, ",", counter, "}"),
+                  "dS")
+  cbc_i <- cbc_i[c(4,3,1,2,5), ]
+  
+  cbc2[[i]] <- cbc_i
+}
+
+print(
+  xtable(
+    bind_rows(cbc1, 
+              bind_rows(cbc2)
+              ),
+    digits = 3, 
+    display = c("d","s","e")
+    ),
+  include.rownames = FALSE
+  )
 
 
+
+
+
+##########################################################################
 ## Plot 1: time, layer depth, TDS, simulation df
 
 # gather appraoch 
@@ -653,8 +718,6 @@ t2 <- group_by(df, dc, time) %>%
 t3 <- cbind.data.frame(t1, t2)
 t3$time <- stringr::str_sub(t3$time, 5,10)
 
-library(kableExtra); library(knitr)
-library(xtable)
 print(xtable(t3), tabluar.environment = "longtable", include.rownames = FALSE)
 
 
