@@ -183,8 +183,8 @@ annual_fluxes[10, 2] = M
 
 
 # calculate flux volume into top layer to enforce steady state conditions
-# 50 yr Q from M, N, B, R (recharge from streams, lakes, and watersheds)
-top_q  <- sum(annual_fluxes[c(1:4, 10), 2]) * 50 
+# 50 yr Q from N, R, B, M (R = recharge from streams, lakes, and watersheds)
+top_q  <- sum(annual_fluxes[c(1:5, 10), 2]) * 50 
 
 # calculate flux volume into layers 2:m 
 # only subsurface inflow because we eliminate overdraft. minimal term
@@ -332,6 +332,14 @@ run_model <- function(irg_eff, RWI_on, N){
       lay_pump[i,1] = b[i]/sum(b) * annual_fluxes[9,2] 
     }
     
+    # repeat for layer subsurface inflow (proportional `side_q`) 
+    # in cells 2:m
+    lay_si = matrix(0,8,1)
+    lay_si[1] = NA
+    for(i in 2:8){
+      lay_si[i,1] = b[i]/sum(b[2:length(b)]) * annual_fluxes[8,2] 
+    }
+    
     
     # Vertical Flux per layer (L/yr)
     # based on velocity alone, these fluxes would occur with NO OTHER
@@ -340,20 +348,29 @@ run_model <- function(irg_eff, RWI_on, N){
     layer_fluxes = cbind(v, Q) # units of "ft/yr" and "L/yr" respectively
     
     # to enforce steady state conditions, the layer to layer fluxes 
-    # are the resudual of all other fluxes between the layers
+    # are the residual of all other fluxes between the layers
     # for layer 1, Q_{in} from the top is `top_q` and must equal Q_{out},
     # which = P + Q_{1,2}. Q_{1,2} is the closure term.
     # Thus Q_{1,2} is Q_{in} - P_{1} (pumping in layer 1):
-    q12 <- top_q - (lay_pump[1] * t) # 50 year in minus out
-    z <- vector()                     # vector of layer to layer fluxes
-    z[1] <- q12                       # initalize with Q_{1,2}
-    for(i in 2:8){                    # solve for Q_{m-1,m}
-      z[i] <- (z[i-1] + side_q) -     # in minus...
-        (lay_pump[i] * t)             # out, over 50 yr time step
+    q12 <- top_q - (lay_pump[1] * t)      # 50 year in minus out
+    z <- vector()                         # vector of layer to layer fluxes
+    z[1] <- q12                           # initalize with Q_{1,2}
+    for(i in 2:8){                        # solve for Q_{m-1,m}
+      z[i] <- (z[i-1] + lay_si[i] * t) -  # in minus...
+        (lay_pump[i] * t)                 # out, over 50 yr time step
     }
     
     # store layer to layer fluxes
     layer_fluxes <- cbind(layer_fluxes, z)
+    
+    # arrange table of layer to layer fluxes
+    data.frame(p = lay_pump, 
+               qc = z/t, 
+               r = c(sum(annual_fluxes[2:4, 2]), rep(NA, 7)),
+               n = c(annual_fluxes[1,2], rep(NA, 7)),
+               b = c(annual_fluxes[5,2], rep(NA, 7)),
+               m = c(annual_fluxes[10,2], rep(NA, 7)),
+               i = c(annual_fluxes[8,2], rep(NA, 7)))
     
     
     
@@ -696,7 +713,7 @@ p <- df3 %>%
         panel.spacing = unit(0.75, "cm"))
  
 p
-#ggsave(p, filename = "~/GitHub/Monte-Carlo-Mixing-Model/results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
+ggsave(p, filename = "~/GitHub/Monte-Carlo-Mixing-Model/results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
 
 
 
@@ -810,7 +827,7 @@ p2 <- ggplot(filter(EC_dat2, time %in% c(0,50,100,150)), aes(x=time, y=mean, fil
 
 p2
 # save
-#ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_ec2.pdf", p2, height= 4, width = 7, device = cairo_pdf)
+ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_ec2.pdf", p2, height= 4, width = 7, device = cairo_pdf)
 
 
 
@@ -915,7 +932,7 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
   coord_cartesian(ylim = c(0,10))
 
 p3
-#ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
+ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
 
 ##########################################################################
 # combine plots 2 and 3
@@ -923,7 +940,9 @@ p3b <- p3 + labs(x=NULL)
 p2b <- p2 + theme(strip.background = element_blank(),
                   strip.text = element_blank())
 p23 <- cowplot::plot_grid(p3b, p2b, align = "hv", ncol = 1, labels = c("(A)","(B)"))
-#ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p23.pdf", p23, height= 8, width = 7, device = cairo_pdf)
+ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p23.pdf", p23, height= 8, width = 7, device = cairo_pdf)
+
+
 
 ##########################################################################
 # GIF for github
@@ -1027,7 +1046,7 @@ anim <- ggplot(temp6, aes(depth, value)) +
   ease_aes("linear") +
   theme(panel.grid.minor = element_blank())
 
-#anim_save("~/GitHub/Monte-Carlo-Mixing-Model/results/salinization.gif", anim) # save to root
+anim_save("~/GitHub/Monte-Carlo-Mixing-Model/results/salinization.gif", anim) # save to root
 
 
 
