@@ -24,9 +24,8 @@ Groundwater TDS-depth profile across a grid of timesteps. The red line represent
 ## Getting Started 
 
 1. Clone this repository  
-2. Install [R](https://www.r-project.org/) and [RStudio](https://www.rstudio.com/)  
-3. Open `MCMM.R` in Studio. An R Markdown (`.Rmd`) file is a notebook version of an R file ([more details here](https://rmarkdown.rstudio.com/))  
-4. Run the code to evaluate the model  
+2. Install [R](https://www.r-project.org/) and optionally, [RStudio](https://www.rstudio.com/)  
+3. Open `MCMM.R` and run to evaluate the model  
 
 
 ## Contents
