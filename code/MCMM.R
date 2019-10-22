@@ -172,15 +172,30 @@ annual_fluxes = data.frame(term = c("NDP", "Stream", "R", "Lake", "BI", "Sub", "
 # eliminate overdraft (delta S = 0)
 # first calculate the volume to eliminate: (1) pumping, and 
 # (2) subsidence flow, which should not exist in a steady state system)
-od <- sum(annual_fluxes$L.yr[c(1:5,8)]) - sum(annual_fluxes$L.yr[6:7]) # overdraft
-od
+od  <- sum(annual_fluxes$L.yr[c(1:6,8)]) - sum(annual_fluxes$L.yr[7])
+odc <- abs(od) + annual_fluxes$L.yr[6] # overdraft + C
+l_to_km3(odc)
 
-# managed aquifer recharge at 0.32 dS following (Hanak, 2019):
-M <- 0.32 * od * -1
+# managed aquifer recharge following (Hanak, 2019) has a theoretical
+# max of 550 TAF = 0.68 km3. Thus we add M proportional to that amount.
+# first we, solve for the proportion of (|dS| + C) that this amounts to
+pp <- af_to_km3(550000) / l_to_km3(odc) 
+M  <- pp * odc 
 
-# new Pumping (P_alt) = R + B + M + I + N percentage reduction in Pumping to stop overdraft
+# sanity check that M = max recharge from Hanak (2019):
+l_to_km3(M)
+
+# new Pumping (P_alt) = R + B + M + I + N 
 P_alt <- sum(annual_fluxes[c(1:5,8), 2]) + abs(M)
+
+# percentage reduction in Pumping to stop overdraft,
+# used to adjust vertical groundwater velocity
 P_alt_prop <- P_alt / annual_fluxes[7,2] 
+
+# percentage increase in M relative to all other recharge terms
+# (R,B,I,N) to stop overdraft.
+# used to adjust vertical groundwater velocity
+#M_prop <- 1 + (M / sum(annual_fluxes$L.yr[c(1:5,8)]))
 
 # sanity check for steady state conditions (no overdraft)
 sum(annual_fluxes$L.yr[c(1:5,8)]) + M - P_alt
@@ -199,19 +214,27 @@ top_q  <- sum(annual_fluxes[c(1:5, 10), 2]) * 50
 side_q <- annual_fluxes[8,2] * 50
 
 
+# calculate percentage reduction in vertical groundwater velocity
+# which is the ratio of alternate downwards flux to original downwards flux
+# alternate downwards flux is given by P_alt
+# original  downwards flux is given by P (minus subsidence flow)
+# P_alt / (P - C)
+v_alt_prop <- P_alt/(annual_fluxes$L.yr[7] - annual_fluxes$L.yr[6])
+
 
 ####################################################################################
 
 # assign TDS to static terms (i.e. - constant mass flux throught simulation)
-annual_fluxes$TDS = c(0,gwc,gwc,gwc,gwc,gwc,0,gwc,0,0) # TDS
+# note that the TDS of M is the last element in annual_fluxes$TDS
+annual_fluxes$TDS = c(0,gwc,gwc,gwc,gwc,gwc,0,gwc,0,gwc) # TDS
 annual_fluxes$mass_flux = annual_fluxes$L.yr * annual_fluxes$TDS # mass flux (mg/yr)
 
 # Internal mass flux: 
 # only from subsurface inflow because subsidence flow eliminated
 internal_mf = sum(annual_fluxes[8, 4]) * t # mg/50 yr 
 
-# Top down Mass Flux:
-# not including NDP, the mass of which is dynamically calculated in
+# Top down Mass Flux: same terms as `top_q`, excluding NDP, 
+# the mass of which is dynamically calculated in
 # the loop to account for evapoconcentration
 top_mf = sum(annual_fluxes[c(2:5,10), 4]) * t # mg/50 yr 
 
@@ -220,7 +243,7 @@ I  = sum(RZ$AG_INF) + sum(RZ$URB_INF) + sum(RZ$NAT_INF) # Net infiltration
 ET = sum(RZ$AG_ET) + sum(RZ$URB_ET) + sum(RZ$NAT_ET) # Net ET
 
 # Percentages
-pI   = NDP/I # percentage of infiltration that becomes NDP
+perc_I   = NDP/I # percentage of infiltration that becomes NDP
 #pGWP = P/I # Percentage of groundwater pumping in Total Applied Water
 pGWP = (sum(LB$Ag..Pumping) + sum(LB$Urban.Pumping)) / 
   (sum(LB$Ag..Pumping)   + sum(LB$Ag..Diversion) + 
@@ -306,14 +329,19 @@ run_model <- function(irg_eff, RWI_on, N){
     
     
     # vertical velocity profile
-    v    = matrix(0,8,1) # initalize vector to hold computed velocities at various depths
-    b    = matrix(0,8,1) # initalize vector to hold layer thicknesses, computed from groundwater velocity
-    v[1] = ( (0 + -coef(l)[[1]]) / coef(l)[[2]] ) * P_alt_prop # compute first velocity
-    b[1] = -(v[1] * t) # compute first layer thickness
+    # initalize vectors to hold:
+    #   - computed velocities at various depths
+    #   - layer thicknesses, computed from groundwater velocity
+    v    = matrix(0,8,1) 
+    b    = matrix(0,8,1) 
+    
+    # compute first velocity and first layer thickness
+    v[1] = ( (0 + -coef(l)[[1]]) / coef(l)[[2]] ) * v_alt_prop
+    b[1] = -(v[1] * t) 
     
     # compute all remaining layer velocities and thicknesses
     for(i in 1:7){
-      v[i+1] = ( (sum(b) -coef(l)[[1]]) / coef(l)[[2]] ) * P_alt_prop
+      v[i+1] = ( (sum(b) -coef(l)[[1]]) / coef(l)[[2]] ) * v_alt_prop
       b[i+1] = -(v[i+1] * t) 
     }
     
@@ -423,10 +451,10 @@ run_model <- function(irg_eff, RWI_on, N){
       # TDS in layer 1 is...
       # initial mass, PLUS
       # top down mass flux, PLUS
-      # internal mass flux, PLUS
+      # ...
       # mass from NDP, MINUS
-      # mass flux into layer below, MINUS
-      # Pumping... ALL DIVIDED BY
+      # mass flux to layer below (q_{1,2}), MINUS
+      # Pumping (P_alt)... ALL DIVIDED BY
       # the Volume of layer 1   
       TDS[1,j+1,k] = (
         (
@@ -498,12 +526,12 @@ run_model <- function(irg_eff, RWI_on, N){
 # evaluate the model with and without RWI
 ##########################################################################
 # with RWI
-z1 <- run_model(irg_eff = c(0.778, 1-pI),
+z1 <- run_model(irg_eff = c(0.778, 1-perc_I),
                 RWI_on = TRUE, 
                 N = 1000)
 
 # without RWI
-z2 <- run_model(irg_eff = c(0.778, 1-pI),
+z2 <- run_model(irg_eff = c(0.778, 1-perc_I),
                 RWI_on = FALSE, 
                 N = 1000)
 
