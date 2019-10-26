@@ -276,10 +276,10 @@ TDS_SW <- sum(sw$vwc) # final concentration of surface water input
 
 ####################################################################################
 
-# sanity check: matches 5.54 km3/yr mass balance in Table S1
+# sanity check: matches D = 5.54 km3/yr mass balance in Table S1
 V_SW = (sum(LB$Ag..Diversion) + sum(LB$Urban.Diversion))/40 
 SW_annual_mass = mg_to_Mton(af_to_L(V_SW) * TDS_SW) # Mton
-Mtons_to_metric_tons(SW_annual_mass) / 1e6
+Mtons_to_metric_tons(SW_annual_mass) / 1e6 # valid
 
 ## Number of Monte Carlo Samples
 ###### This number determines how many random samples are drawn from the input parameters modeled as distributions of a random variable. 1000 samples is standard.
