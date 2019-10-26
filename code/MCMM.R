@@ -244,11 +244,12 @@ ET = sum(RZ$AG_ET) + sum(RZ$URB_ET) + sum(RZ$NAT_ET) # Net ET
 
 # Percentages
 perc_I   = NDP/I # percentage of infiltration that becomes NDP
-#pGWP = P/I # Percentage of groundwater pumping in Total Applied Water
+# pGWP = P/I # Percentage of groundwater pumping in Total Applied Water
 pGWP = (sum(LB$Ag..Pumping) + sum(LB$Urban.Pumping)) / 
   (sum(LB$Ag..Pumping)   + sum(LB$Ag..Diversion) + 
    sum(LB$Urban.Pumping) + sum(LB$Urban.Diversion))
-pSW  = 1 - pGWP # percentage of surface water diversions and reuse in Total Applied Water
+# pSW = percentage of surface water diversions and reuse in Total Applied Water
+pSW  = 1 - pGWP 
 
 # Average Annual Surface Water TDS, volume, and mass flux
 # TDS_SW = .38*((247.22540+254.26799)/2) + .62*(87.24187) # TDS of surface water
@@ -861,9 +862,9 @@ AW_95     = as.data.frame(matrix(0,7,1))
 EC_95     = as.data.frame(matrix(0,7,1))
 
 for(i in 1:7){
-  GWP_mean[i,1]  = mean(z2$TDS_GWP[i,1,])
-  AW_mean[i,1]   = mean(z2$TDS_AW[i,1,])
-  EC_mean[i,1]   = mean(z2$EC[i,1,])
+  GWP_mean[i,1]  = median(z2$TDS_GWP[i,1,])
+  AW_mean[i,1]   = median(z2$TDS_AW[i,1,])
+  EC_mean[i,1]   = median(z2$EC[i,1,])
   EC_median[i,1] = median(z2$EC[i,1,])
   GWP_5[i,1]     = quantile(z2$TDS_GWP[i,1,], c(0.25))
   GWP_95[i,1]    = quantile(z2$TDS_GWP[i,1,], c(0.75))
@@ -948,7 +949,7 @@ gwp2 <- gwp2 %>%
 swm <- Mtons_to_metric_tons(SW_annual_mass)
 
 # all other budget terms
-all_else <- Mtons_to_metric_tons(mg_to_Mton(sum(annual_fluxes[c(2,3,4,5,6,8),4])))
+all_else <- Mtons_to_metric_tons(mg_to_Mton(sum(annual_fluxes[c(2,3,4,5,10,8),4])))
 
 # combine into one df
 df1 <- data.frame(m = rep(c(swm, all_else), each = 7), 
@@ -977,8 +978,8 @@ df3 <- data.frame(m = RWI_int[2], t = 1:7, type = "rwi", p5 = RWI_int[1], p95 = 
 
 df4 <- rbind.data.frame(df1, df2, df3)
 df4$t <- rep(seq(0,300, 50), times = 4) # format times
-df4$type <- factor(rep(c("Surface Water Diversions", "I, C, R, B", "Pumped Groundwater", "Rock-water Interactions"), each = 7), # format labels
-                   levels = c("I, C, R, B", "Surface Water Diversions", "Pumped Groundwater","Rock-water Interactions"))
+df4$type <- factor(rep(c("Surface Water Diversions", "I, M, R, B", "Pumped Groundwater", "Rock-water Interactions"), each = 7), # format labels
+                   levels = c("I, M, R, B", "Surface Water Diversions", "Pumped Groundwater","Rock-water Interactions"))
 
 # RWI
 df4_rwi <- df4
@@ -989,8 +990,8 @@ df3b <- df3
 df3b$m <- 0; df3b$p5 <- 0; df3b$p95 <- 0 
 df4 <- rbind.data.frame(df1, df2b, df3b)
 df4$t <- rep(seq(0,300, 50), times = 4) # format times
-df4$type <- factor(rep(c("Surface Water Diversions", "I, C, R, B", "Pumped Groundwater", "Rock-water Interactions"), each = 7), # format labels
-                   levels = c("I, C, R, B", "Surface Water Diversions", "Pumped Groundwater","Rock-water Interactions"))
+df4$type <- factor(rep(c("Surface Water Diversions", "I, M, R, B", "Pumped Groundwater", "Rock-water Interactions"), each = 7), # format labels
+                   levels = c("I, M, R, B", "Surface Water Diversions", "Pumped Groundwater","Rock-water Interactions"))
 df4_nrwi <- df4 #%>% filter(m != 0)
 df4_nrwi$class <- "No rock-water interactions"
 
