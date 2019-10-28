@@ -402,13 +402,13 @@ run_model <- function(irg_eff, RWI_on, N){
     layer_fluxes <- cbind(layer_fluxes, z)
     
     # arrange table of layer to layer fluxes
-    cbc[[k]] <- data.frame(p = -lay_pump, 
+    cbc[[k]] <- data.frame(p  = -lay_pump, 
                            qc = z/t, 
-                           r = c(sum(annual_fluxes[2:4, 2]), rep(NA, 7)),
-                           n = c(annual_fluxes[1,2], rep(NA, 7)),
-                           b = c(annual_fluxes[5,2], rep(NA, 7)),
-                           m = c(annual_fluxes[10,2], rep(NA, 7)),
-                           i = lay_si) %>% 
+                           r  = c(sum(annual_fluxes[2:4, 2]), rep(NA, 7)),
+                           n  = c(annual_fluxes[1,2], rep(NA, 7)),
+                           b  = c(annual_fluxes[5,2], rep(NA, 7)),
+                           m  = c(annual_fluxes[10,2], rep(NA, 7)),
+                           i  = lay_si) %>% 
       mutate_all(l_to_km3)
     
     # Initalize TDS array with baseline TDS
@@ -553,14 +553,14 @@ cbc1 <- tibble(term = colnames(cbc),
   mutate(q = ifelse(term == "qc", q * -1, q))
 
 # sanity check: steady state
-pull(cbc1, q) %>% sum()
+all.equal(sum(cbc1$q),0)
 cbc1$term <- c("P{alt, 1}", "q{1,2}", "R", "N", "B", "M")
 cbc1 <- cbc1[c(4,3,5,6,1,2), ]
 cbc1 <- bind_rows(cbc1, data.frame(term = "dS", q = sum(cbc1$q)))
 
 # layers 2:m
 cbc_in <- select(cbc, p, qc, i)
-cbc2 <- vector("list", length=6)
+cbc2 <- vector("list", length=7)
 for(i in 1:length(cbc2)){
   counter <- i + 1
   cbc_i <- tibble(term = c(colnames(cbc_in), "qc_in"),
@@ -579,19 +579,31 @@ for(i in 1:length(cbc2)){
   cbc2[[i]] <- cbc_i
 }
 
+# combine into one table
+cbc_df <- bind_rows(cbc1, bind_rows(cbc2))
+
 print(
   xtable(
-    bind_rows(cbc1, 
-              bind_rows(cbc2)
-              ),
+    cbc_df,
     digits = 3, 
     display = c("d","s","e")
     ),
   include.rownames = FALSE
   )
 
+# sanity check that Pumping and I (distributed terms)
+# match the groundwater budget
+cbc_df %>% 
+  filter(stringr::str_detect(.$term, "P")) %>% 
+  pull(q) %>% 
+  sum() %>% 
+  all.equal(., -l_to_km3(annual_fluxes$L.yr[9]))
 
-
+cbc_df %>% 
+  filter(stringr::str_detect(.$term, "I")) %>% 
+  pull(q) %>% 
+  sum() %>% 
+  all.equal(., l_to_km3(annual_fluxes$L.yr[8]))
 
 
 ##########################################################################
@@ -616,14 +628,15 @@ df$sim <- as.factor(df$sim)
 df$time <- factor(paste0("t = ", df$time), 
                   levels = paste0("t = ", 
                                   c("0", "50","100","150","200","250","300","350")))
-df$d <- df$d * 0.3048       # ft to meters
+df$d <- df$d * 0.3048 # ft to meters
 df$rwi <- "RWI"
 
 
 
 
 # make depth-time array
-ld   <- lapply(1:1000, function(x){return(z2$layer_depths_array[1:7,,x])}) # all layer depths in a list
+# all layer depths in a list
+ld   <- lapply(1:1000, function(x){return(z2$layer_depths_array[1:7,,x])}) 
 td   <- lapply(1:1000, function(x){return(z2$TDS[1:7,,x])}) # tds as a list of matrices
 ldtd <- lapply(1:1000, function(x){return(data.frame(cbind(ld[[x]], td[[x]])))}) # bind
 
@@ -638,7 +651,7 @@ df2$sim <- as.factor(df2$sim)
 df2$time <- factor(paste0("t = ", df2$time), 
                    levels = paste0("t = ", 
                                    c("0", "50","100","150","200","250","300","350")))
-df2$d <- df2$d * 0.3048       # ft to meters
+df2$d <- df2$d * 0.3048 # ft to meters
 df2$rwi <- "noRWI"
 
 
@@ -938,10 +951,10 @@ gwp  <- dplyr::bind_rows(gwp)
 gwp2 <- dplyr::bind_rows(gwp2)
 
 gwp <- gwp %>% 
-  mutate(m = Mtons_to_metric_tons(mg_to_Mton(tds * annual_fluxes[7,2])))
+  mutate(m = Mtons_to_metric_tons(mg_to_Mton(tds * annual_fluxes[9,2])))
 
 gwp2 <- gwp2 %>% 
-  mutate(m = Mtons_to_metric_tons(mg_to_Mton(tds * annual_fluxes[7,2])))
+  mutate(m = Mtons_to_metric_tons(mg_to_Mton(tds * annual_fluxes[9,2])))
 
 # constant mass: surface water and allother budget terms
 
@@ -965,8 +978,14 @@ df2b <- select(gwp2, m, t, type) %>%
 
 df1$p5  <- NA
 df1$p95 <- NA
-df2  <- df2 %>% rename(m = median) %>% mutate(type = "gwp_rwi") %>% select(m, t, type, p5, p95)
-df2b <- df2b %>% rename(m = median) %>% mutate(type = "gwp_no_rwi") %>% select(m, t, type, p5, p95)
+df2  <- df2 %>% 
+  rename(m = median) %>% 
+  mutate(type = "gwp_rwi") %>% 
+  select(m, t, type, p5, p95)
+df2b <- df2b %>% 
+  rename(m = median) %>% 
+  mutate(type = "gwp_no_rwi") %>% 
+  select(m, t, type, p5, p95)
 
 # rwi: need to go back and re-run code with RWI
 mg_to_metric_tons <- function(x){return(x * 1e-9)}
@@ -1010,7 +1029,7 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
                 position=position_dodge(.9)) +
   scale_fill_viridis_d("Source", option = "E") +
   theme_minimal(base_size = 13) +
-  theme(legend.position = c(0.16, 0.74), 
+  theme(legend.position = c(0.17, 0.74), 
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank(),
         legend.background = element_rect(fill = "white", color = "transparent"),
@@ -1020,8 +1039,9 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
   #theme(legend.position = "bottom") +
   labs(x = "Time (yrs)", y = "Annual mass (Metric Mtons)") +
   facet_wrap(~class, ncol = 2) +
-  scale_y_continuous(breaks = seq(0,10,2), labels = as.character(seq(0,10,2))) +
-  coord_cartesian(ylim = c(0,10))
+  scale_y_continuous(breaks = seq(0,8,2), 
+                     labels = as.character(seq(0,8,2)),
+                     limits = c(0,8.5))
 
 p3
 ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
