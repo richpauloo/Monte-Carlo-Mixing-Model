@@ -1,3 +1,6 @@
+[![DOI](https://zenodo.org/badge/96582574.svg)](https://zenodo.org/badge/latestdoi/96582574)
+
+
 # Anthropogenic Basin Closure and Groundwater Salinization: An Unrecognized Threat to Water Quality Sustainability
 
 Authors: Rich A. Pauloo [a], Graham E. Fogg [a], Thomas Harter [a], Zhilin Guo [b]
