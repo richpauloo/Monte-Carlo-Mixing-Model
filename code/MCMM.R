@@ -159,7 +159,7 @@ sw <- sw %>%
 
 # final concentration of natural surface water and thus GW
 gwc <- sum(sw$vwc)
-gwc <- 32.5 # overwrite with NWIS samples, Figure A.7
+gwc <- 32.5 # From NWIS samples Figure A.7 and 01_mm/code/*.R
 ####################################################################################
 
 # C2VSim average annual fluxes from GW budget
@@ -259,27 +259,32 @@ pSW  = 1 - pGWP
 # within report search for: Annual Salt Load (thousand tons/year)
 ####################################################################################
 
+# --------------- obselete -------------------
 # period of record 1985 - 1994
-sw <- data.frame(term = c("swp","cvp"),
-                 ttons = c(1004, 900),
-                 taf_yr = c(2471,2328))
+# sw <- data.frame(term = c("swp","cvp"),
+#                  ttons = c(1004, 900),
+#                  taf_yr = c(2471,2328))
+# 
+# # concentration of delivered sw
+# sw$c <- sw$ttons / sw$taf_yr
+# sw$c <- sw$c * 9.072e+11 / 1.233e+9 # convert ktons to mg and thousand acre feet to L
+# 
+# # volume weighted concetration
+# sw <- sw %>%
+#   mutate(pv  = taf_yr / (sum(sw$taf_yr)), # percent volume
+#          vwc = pv * c) # volume weighted concentration
+# TDS_SW <- sum(sw$vwc) # final concentration of surface water input
+# --------------- obselete -------------------
+# diversions to TLB via CVP and SWP
+TDS_SW <- (1208/3360) * (9.072E8/1.233E6) # mg/L
 
-# concentration of delivered sw
-sw$c <- sw$ttons / sw$taf_yr
-sw$c <- sw$c * 9.072e+11 / 1.233e+9 # convert ktons to mg and thousand acre feet to L
-
-# volume weighted concetration
-sw <- sw %>% 
-  mutate(pv  = taf_yr / (sum(sw$taf_yr)), # percent volume
-         vwc = pv * c) # volume weighted concentration
-TDS_SW <- sum(sw$vwc) # final concentration of surface water input
-TDS_SW <- 264.53 # overwrite with state/CV project Table A.3
 ####################################################################################
 
 # sanity check: matches D = 5.54 km3/yr mass balance in Table S1
 V_SW = (sum(LB$Ag..Diversion) + sum(LB$Urban.Diversion))/40 
+af_to_km3(V_SW)                                     # matches D
 SW_annual_mass = mg_to_Mton(af_to_L(V_SW) * TDS_SW) # Mton
-Mtons_to_metric_tons(SW_annual_mass) / 1e6 # valid
+Mtons_to_metric_tons(SW_annual_mass) / 1e6          # metric Mtons
 
 ## Number of Monte Carlo Samples
 ###### This number determines how many random samples are drawn from the input parameters modeled as distributions of a random variable. 1000 samples is standard.
@@ -311,7 +316,7 @@ run_model <- function(irg_eff, RWI_on, N){
     #n = 0.30
     
     # Random Variables
-    n    = 0.3 #runif(1, min = porosity[1], max = porosity[2]) # porosity
+    n    = 0.4 #runif(1, min = porosity[1], max = porosity[2]) # porosity
     pa   = 0.990 # percent aquifer
     aVol = Tot_V * n * pa # saturated aquifer volume (L)
     pI   = runif(1, min = 1-irg_eff[2], max = 1-irg_eff[1]) # irrigation efficiency
@@ -803,7 +808,7 @@ p <- df3 %>%
   geom_hline(yintercept = 1000, linetype = "dashed") +
   scale_color_grey() + 
   guides(color = FALSE) + 
-  coord_flip(ylim = c(-0, 3500))+#21000)) + 
+  coord_flip(ylim = c(-0, 3200))+#21000)) + 
   theme_minimal() + 
   facet_wrap(~time, labeller = as_labeller(ll)) +
   # scale_y_continuous(breaks = c(0, 5000, 10000),#, 15000, 20000), 
@@ -925,9 +930,9 @@ p2 <- ggplot(filter(EC_dat2, time %in% c(0,50,100,150)), aes(x=time, y=mean, fil
         legend.text = element_text(size = 9),
         legend.title = element_text(size = 11),
         legend.key.size = unit(.5, "cm")) +
-  coord_cartesian(ylim = c(0,7100)) +
-  scale_y_continuous(breaks = c(0,1000,3000,5000,7000), 
-                     labels = formatC(c(0,1000,3000,5000,7000), big.mark=",")) +
+  coord_cartesian(ylim = c(0,6000)) +
+  scale_y_continuous(breaks = c(0,1000,2000,4000,6000), 
+                     labels = formatC(c(0,1000,2000,4000,6000), big.mark=",")) +
   facet_wrap(~class, ncol = 2)
 
 p2
@@ -1029,7 +1034,7 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
                 position=position_dodge(.9)) +
   scale_fill_viridis_d("Source", option = "E") +
   theme_minimal(base_size = 13) +
-  theme(legend.position = c(0.17, 0.74), 
+  theme(legend.position = c(0.17, 0.76), 
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank(),
         legend.background = element_rect(fill = "white", color = "transparent"),
@@ -1039,9 +1044,9 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
   #theme(legend.position = "bottom") +
   labs(x = "Time (yrs)", y = "Annual mass (Mt/yr)") +
   facet_wrap(~class, ncol = 2) +
-  scale_y_continuous(breaks = seq(0,8,2), 
-                     labels = as.character(seq(0,8,2)),
-                     limits = c(0,8.5))
+  scale_y_continuous(breaks = c(0,1,3,5,7), 
+                     labels = as.character(c(0,1,3,5,7)),
+                     limits = c(0,7.5))
 
 p3
 ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p_salt_budget2.pdf", p3, height= 4, width = 7, device = cairo_pdf)
