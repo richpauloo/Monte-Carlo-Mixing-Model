@@ -159,7 +159,7 @@ sw <- sw %>%
 
 # final concentration of natural surface water and thus GW
 gwc <- sum(sw$vwc)
-
+gwc <- 32.5 # overwrite with NWIS samples, Figure A.7
 ####################################################################################
 
 # C2VSim average annual fluxes from GW budget
@@ -273,7 +273,7 @@ sw <- sw %>%
   mutate(pv  = taf_yr / (sum(sw$taf_yr)), # percent volume
          vwc = pv * c) # volume weighted concentration
 TDS_SW <- sum(sw$vwc) # final concentration of surface water input
-
+TDS_SW <- 264.53 # overwrite with state/CV project Table A.3
 ####################################################################################
 
 # sanity check: matches D = 5.54 km3/yr mass balance in Table S1
@@ -1037,7 +1037,7 @@ p3 <- ggplot(filter(df5, t %in% c(0,50,100,150)), aes(factor(t), m/1000000, fill
         legend.title = element_text(size = 11),
         legend.key.size = unit(.5, "cm")) +
   #theme(legend.position = "bottom") +
-  labs(x = "Time (yrs)", y = "Annual mass (Metric Mtons)") +
+  labs(x = "Time (yrs)", y = "Annual mass (Mt/yr)") +
   facet_wrap(~class, ncol = 2) +
   scale_y_continuous(breaks = seq(0,8,2), 
                      labels = as.character(seq(0,8,2)),
