@@ -806,7 +806,7 @@ p <- df3 %>%
         panel.spacing = unit(0.75, "cm"))
  
 p
-ggsave(p, filename = "~/GitHub/Monte-Carlo-Mixing-Model/results/p_sim_both2.pdf", device = cairo_pdf, height = 5, width = 7)
+ggsave(p, filename = "~/Documents/GitHub/Monte-Carlo-Mixing-Model/results/p_sim_both2.pdf", height = 5, width = 7)
 
 
 
