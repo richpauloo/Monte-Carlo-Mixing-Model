@@ -23,17 +23,17 @@ library(xtable)
 ####################################################################################
 
 # Groundwater budget (10/31/1961-9/30/2001)
-GW = read.csv(file = "~/GitHub/Monte-Carlo-Mixing-Model/data/GW.csv", stringsAsFactors = FALSE, header = TRUE) 
+GW = read.csv(file = "~/Documents/GitHub/Monte-Carlo-Mixing-Model/data/GW.csv", stringsAsFactors = FALSE, header = TRUE) 
 
 # Land Budget budget (10/31/1961-9/30/2001)
-LB = read.csv(file = "~/GitHub/Monte-Carlo-Mixing-Model/data/LB.csv", stringsAsFactors = FALSE, header = TRUE)
+LB = read.csv(file = "~/Documents/GitHub/Monte-Carlo-Mixing-Model/data/LB.csv", stringsAsFactors = FALSE, header = TRUE)
 
 # Root Zone budget (10/31/1961-9/30/2001)
-RZ = read.csv(file = "~/GitHub/Monte-Carlo-Mixing-Model/data/RZ.csv", stringsAsFactors = FALSE, header = TRUE) 
+RZ = read.csv(file = "~/Documents/GitHub/Monte-Carlo-Mixing-Model/data/RZ.csv", stringsAsFactors = FALSE, header = TRUE) 
 
 # Bring in boundary condition data and RWI from dissertation/code/02_reanalyze_gw_tds.R 
 
-boundary_dat <- readRDS("~/GitHub/Monte-Carlo-Mixing-Model/data/boundary_dat.rds")
+boundary_dat <- readRDS("~/Documents/GitHub/Monte-Carlo-Mixing-Model/data/boundary_dat.rds")
 bd <- boundary_dat %>% dplyr::select(x,y) %>% 
   mutate(x = abs(x) * 3.28084) %>% # convert m to ft for model
   arrange(x) %>% 
@@ -290,21 +290,25 @@ Mtons_to_metric_tons(SW_annual_mass) / 1e6          # metric Mtons
 ###### This number determines how many random samples are drawn from the input parameters modeled as distributions of a random variable. 1000 samples is standard.
 N = 1000
 
+# number of layers and minus one
+nlay = 80
+nm   = nlay - 1
+
 ## Compute all output  
 
 run_model <- function(irg_eff, RWI_on, N){
   
   # set up model arrays
-  TDS                  = array(0, dim=c(8,8,N)) # TDS array
-  layer_depths_array   = array(0, dim=c(8,1,N)) # layer depths array
-  layer_velocity_array = array(0, dim=c(8,1,N)) # layer velocity array
-  mass                 = array(0, dim=c(8,1,N)) # array of sum of masses per time step
-  TDS_GWP              = array(0, dim=c(8,1,N)) # array of TDS of pumped groundwater per time step
-  TDS_AW               = array(0, dim=c(8,1,N)) # array of TDS of applied water (SW+GW) per time step
-  EC                   = array(0, dim=c(8,1,N)) # array of evaporative concentration of NDP per time step (TDS)
-  NDP_mf               = array(0, dim=c(8,1,N)) # array of NDP mass flux per time step (mg/yr)
-  RWI_cont             = array(0, dim=c(8,1,N)) # array of Rock water interactions
-  lay_vol              = array(0, dim=c(8,1,N)) # array of layer volumes
+  TDS                  = array(0, dim=c(nlay,8,N)) # TDS array
+  layer_depths_array   = array(0, dim=c(nlay,1,N)) # layer depths array
+  layer_velocity_array = array(0, dim=c(nlay,1,N)) # layer velocity array
+  mass                 = array(0, dim=c(nlay,1,N)) # array of sum of masses per time step
+  TDS_GWP              = array(0, dim=c(nlay,1,N)) # array of TDS of pumped groundwater per time step
+  TDS_AW               = array(0, dim=c(nlay,1,N)) # array of TDS of applied water (SW+GW) per time step
+  EC                   = array(0, dim=c(nlay,1,N)) # array of evaporative concentration of NDP per time step (TDS)
+  NDP_mf               = array(0, dim=c(nlay,1,N)) # array of NDP mass flux per time step (mg/yr)
+  RWI_cont             = array(0, dim=c(nlay,1,N)) # array of Rock water interactions
+  lay_vol              = array(0, dim=c(nlay,1,N)) # array of layer volumes
   cbc                  = vector("list", length=N)
   
   # loop over N realizations
@@ -338,29 +342,29 @@ run_model <- function(irg_eff, RWI_on, N){
     # initalize vectors to hold:
     #   - computed velocities at various depths
     #   - layer thicknesses, computed from groundwater velocity
-    v    = matrix(0,8,1) 
-    b    = matrix(0,8,1) 
+    v    = matrix(0,nlay,1) 
+    b    = matrix(0,nlay,1) 
     
     # compute first velocity and first layer thickness
     v[1] = ( (0 + -coef(l)[[1]]) / coef(l)[[2]] ) * v_alt_prop
     b[1] = -(v[1] * t) 
     
     # compute all remaining layer velocities and thicknesses
-    for(i in 1:7){
+    for(i in 1:nm){
       v[i+1] = ( (sum(b) -coef(l)[[1]]) / coef(l)[[2]] ) * v_alt_prop
       b[i+1] = -(v[i+1] * t) 
     }
     
     
     # layer thickness (ft)
-    b[8] = -(SA_w_thickness + sum(b[1:7]))
+    b[nlay] = -(SA_w_thickness + sum(b[1:nm]))
     pb   = abs(b)/SA_w_thickness # percentage of total thickness per layer
     
     
     # Calculate the layer depths
-    layer_depths    = matrix(0,8)
+    layer_depths    = matrix(0,nlay)
     layer_depths[1] = abs(b[1])
-    for(i in 2:8){
+    for(i in 2:nlay){
       layer_depths[i,1] = abs(layer_depths[i-1,1]) + abs(b[i]) # vector of layer depths (ft)
     }
     
@@ -370,16 +374,16 @@ run_model <- function(irg_eff, RWI_on, N){
     
     # Calculate proportion Pumping in each layer (using P_alt)
     # most pumping occurs in the deep aquifer
-    lay_pump = matrix(0,8,1)
-    for(i in 1:8){
+    lay_pump = matrix(0,nlay,1)
+    for(i in 1:nlay){
       lay_pump[i,1] = b[i]/sum(b) * annual_fluxes[9,2] 
     }
     
     # repeat for layer subsurface inflow (proportional `side_q`) 
     # in cells 2:m
-    lay_si = matrix(0,8,1)
+    lay_si = matrix(0,nlay,1)
     lay_si[1] = NA
-    for(i in 2:8){
+    for(i in 2:nlay){
       lay_si[i,1] = b[i]/sum(b[2:length(b)]) * annual_fluxes[8,2] 
     }
     
@@ -398,7 +402,7 @@ run_model <- function(irg_eff, RWI_on, N){
     q12 <- top_q - (lay_pump[1] * t)      # 50 year in minus out
     z <- vector()                         # vector of layer to layer fluxes
     z[1] <- q12                           # initalize with Q_{1,2}
-    for(i in 2:8){                        # solve for Q_{m-1,m}
+    for(i in 2:nlay){                        # solve for Q_{m-1,m}
       z[i] <- (z[i-1] + lay_si[i] * t) -  # in minus...
         (lay_pump[i] * t)                 # out, over 50 yr time step
     }
@@ -409,17 +413,17 @@ run_model <- function(irg_eff, RWI_on, N){
     # arrange table of layer to layer fluxes
     cbc[[k]] <- data.frame(p  = -lay_pump, 
                            qc = z/t, 
-                           r  = c(sum(annual_fluxes[2:4, 2]), rep(NA, 7)),
-                           n  = c(annual_fluxes[1,2], rep(NA, 7)),
-                           b  = c(annual_fluxes[5,2], rep(NA, 7)),
-                           m  = c(annual_fluxes[10,2], rep(NA, 7)),
+                           r  = c(sum(annual_fluxes[2:4, 2]), rep(NA, nm)),
+                           n  = c(annual_fluxes[1,2], rep(NA, nm)),
+                           b  = c(annual_fluxes[5,2], rep(NA, nm)),
+                           m  = c(annual_fluxes[10,2], rep(NA, nm)),
                            i  = lay_si) %>% 
       mutate_all(l_to_km3)
     
     # Initalize TDS array with baseline TDS
     #t0 = layer_depths * RWI # inital TDS-depth profile from RWI
     
-    bc_match <- matrix(0, nrow = 8, ncol = 1)
+    bc_match <- matrix(0, nrow = nlay, ncol = 1)
     for(i in 1:nrow(layer_depths)){
       temp  <- layer_depths[i,1] - bd[,1]
       index <- which.min(abs(temp))
@@ -448,8 +452,8 @@ run_model <- function(irg_eff, RWI_on, N){
     for(j in 1:7){
       
       # calculate mass flux of NDP
-      mass[j,1,k]    = sum(TDS[1:7,j,k] * lay_vol[1:7,1,k]) # sum of mass in pumping layers 1-7 (mg)
-      TDS_GWP[j,1,k] = mass[j,1,k]/sum(lay_vol[1:7,1,k]) # TDS of pumped GW
+      mass[j,1,k]    = sum(TDS[1:nm,j,k] * lay_vol[1:nm,1,k]) # sum of mass in pumping layers 1-7 (mg)
+      TDS_GWP[j,1,k] = mass[j,1,k]/sum(lay_vol[1:nm,1,k]) # TDS of pumped GW
       TDS_AW[j,1,k]  = TDS_GWP[j,1,k] * pGWP + TDS_SW * pSW # TDS of applied water for irrigation
       EC[j,1,k]      = TDS_AW[j,1,k] * (1/pI) # TDS of NDP Evaporative concentration
       NDP_mf[j,1,k]  = EC[j,1,k] * annual_fluxes[1,2] # mass flux of NDP
@@ -481,7 +485,7 @@ run_model <- function(irg_eff, RWI_on, N){
       # Pumping, MINUS
       # mass flux into layer below, ALL DIVDED BY  
       # the layer volume
-      for(i in 2:7){
+      for(i in 2:nlay){
         TDS[i,j+1,k] = (
           (
             TDS[i,j,k]   * lay_vol[i,1,k] +         
@@ -495,9 +499,9 @@ run_model <- function(irg_eff, RWI_on, N){
       }
       
       # baseline correction from rock water interactions 
-      mean_bl <- mean((TDS[,j,k] - TDS[,j+1,k])[(j+1):7])
+      mean_bl <- mean((TDS[,j,k] - TDS[,j+1,k])[(j+1):nm])
       
-      TDS[,j+1,k][(j+1):7] <- TDS[,j+1,k][(j+1):7] + (TDS[,j,k] - TDS[,j+1,k])[(j+1):7]
+      TDS[,j+1,k][(j+1):nm] <- TDS[,j+1,k][(j+1):nm] + (TDS[,j,k] - TDS[,j+1,k])[(j+1):nm]
       TDS[1:j,j+1,k] <- TDS[1:j,j+1,k] + mean_bl
       
       # when RWI == TRUE, add the RWI zero order source term
@@ -565,7 +569,7 @@ cbc1 <- bind_rows(cbc1, data.frame(term = "dS", q = sum(cbc1$q)))
 
 # layers 2:m
 cbc_in <- select(cbc, p, qc, i)
-cbc2 <- vector("list", length=7)
+cbc2 <- vector("list", length=nlay)
 for(i in 1:length(cbc2)){
   counter <- i + 1
   cbc_i <- tibble(term = c(colnames(cbc_in), "qc_in"),
@@ -618,8 +622,8 @@ cbc_df %>%
 
 
 # make depth-time array
-ld   <- lapply(1:1000, function(x){return(z1$layer_depths_array[1:7,,x])}) # all layer depths in a list
-td   <- lapply(1:1000, function(x){return(z1$TDS[1:7,,x])}) # tds as a list of matrices
+ld   <- lapply(1:1000, function(x){return(z1$layer_depths_array[1:nm,,x])}) # all layer depths in a list
+td   <- lapply(1:1000, function(x){return(z1$TDS[1:nm,,x])}) # tds as a list of matrices
 ldtd <- lapply(1:1000, function(x){return(data.frame(cbind(ld[[x]], td[[x]])))}) # bind
 
 for(i in 1:1000){
@@ -641,8 +645,8 @@ df$rwi <- "RWI"
 
 # make depth-time array
 # all layer depths in a list
-ld   <- lapply(1:1000, function(x){return(z2$layer_depths_array[1:7,,x])}) 
-td   <- lapply(1:1000, function(x){return(z2$TDS[1:7,,x])}) # tds as a list of matrices
+ld   <- lapply(1:1000, function(x){return(z2$layer_depths_array[1:nm,,x])}) 
+td   <- lapply(1:1000, function(x){return(z2$TDS[1:nm,,x])}) # tds as a list of matrices
 ldtd <- lapply(1:1000, function(x){return(data.frame(cbind(ld[[x]], td[[x]])))}) # bind
 
 for(i in 1:1000){
@@ -674,30 +678,9 @@ ll <- c(
 )
 
 
-
-# p <- df %>% filter(time %in% c("t = 0", "t = 50", "t = 100", "t = 200", "t = 250", "t = 300") & sim %in% 251:500) %>%
-#   ggplot(aes(-d, tds)) +
-#   geom_line(aes(color = sim), alpha = 0.2) +
-#   geom_smooth(se = FALSE, color = "red") +
-#   coord_flip(ylim = c(0, 7500)) +
-#   scale_color_grey() +
-#   guides(color = FALSE) +
-#   theme_minimal() +
-#   facet_wrap(~time, labeller = as_labeller(ll)) +
-#   scale_y_continuous(breaks = c(0, 1000, 2500, 5000, 7500),
-#                      labels = c('0', '1,000', '2,500', '5,000', '7,500')) +
-#   labs(x = "Depth (m)", y = "TDS (mg/L)") +
-#   theme(panel.grid.minor = element_blank())
-# 
-# p
-
-#ggsave(p, filename = "results/p_sim.pdf", device = cairo_pdf, height = 5, width = 7)
-
-
-
 # df == RWI
-df$tc <- rep(1:8, each = 7) # add time class for easy filtering (1 = 0 yrs, 2 = 50 yrs...)
-df$dc <- 1:7                # depth class for easy filtering (1 = layer 1, 2 = layer 2, ...)
+df$tc <- rep(1:8, each = nm) # add time class for easy filtering (1 = 0 yrs, 2 = 50 yrs...)
+df$dc <- 1:nm                # depth class for easy filtering (1 = layer 1, 2 = layer 2, ...)
 
 filter(df, dc == 1, tc == 1) %>% 
   summarise(mean_depth = mean(d), p50 = median(tds), 
@@ -710,8 +693,8 @@ filter(df, dc == 1, tc == 5) %>%
             p25 = quantile(tds, 0.25), p75 = quantile(tds, 0.75))
 
 # df2 == no RWI
-df2$tc <- rep(1:8, each = 7)
-df2$dc <- 1:7
+df2$tc <- rep(1:8, each = nm)
+df2$dc <- 1:nm
 
 filter(df2, dc == 1, tc == 1) %>% 
   summarise(mean_depth = mean(d), p50 = median(tds), 
@@ -815,8 +798,8 @@ p <- df3 %>%
   #                    labels = c('0', '5,000', '10,000'))+#, '15,000', '20,000')) + 
   scale_y_continuous(breaks = c(0, 1000, 2000, 3000), 
                      labels = c('0', '1,000', '2,000', '3,000')) + 
-  scale_x_continuous(breaks = c(-50, -100, -150, -200, -250), 
-                     labels = c('-50', '-100', '-150', '-200', '-250')) + 
+  # scale_x_continuous(breaks = c(-50, -100, -150, -200, -250), 
+  #                    labels = c('-50', '-100', '-150', '-200', '-250')) + 
   labs(x = "Depth (m)", y = "TDS (mg/L)")  +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         panel.grid.minor = element_blank(),
@@ -1064,17 +1047,17 @@ ggsave("~/GitHub/Monte-Carlo-Mixing-Model/results/p23.pdf", p23, height= 8, widt
 ##########################################################################
 # GIF for github
 # mean TDS
-TDS_mean = as.data.frame(matrix(0,8,8))
-for(i in 1:8){
+TDS_mean = as.data.frame(matrix(0,nlay,8))
+for(i in 1:nlay){
   for(j in 1:8){
     TDS_mean[i,j] = mean(z2$TDS[i,j,])
   }
 }
 
 # mean depths
-sd.top    = matrix(0,7,8)
-sd.bottom = matrix(0,7,8)
-for(d in 1:7){
+sd.top    = matrix(0,nm,8)
+sd.bottom = matrix(0,nm,8)
+for(d in 1:nm){
   for(t in 1:8){
     sd.top[d,t]    = TDS_mean[d,t] - sd(z2$TDS[d,t,]) # sd
     sd.bottom[d,t] = TDS_mean[d,t] + sd(z2$TDS[d,t,]) # sd
@@ -1082,9 +1065,9 @@ for(d in 1:7){
 }
 
 # 5th and 95th percentiles
-TDS_5  = matrix(0,7,8)
-TDS_95 = matrix(0,7,8)
-for(d in 1:7){
+TDS_5  = matrix(0,nm,8)
+TDS_95 = matrix(0,nm,8)
+for(d in 1:nm){
   for(t in 1:8){
     TDS_5[d,t]  = quantile(z2$TDS[d,t,], c(0.25)) # 5% CI
     TDS_95[d,t] = quantile(z2$TDS[d,t,], c(.75))  # 95% CI
@@ -1092,9 +1075,9 @@ for(d in 1:7){
 }
 
 ## calculate layer depths/velocities of simulation means for main plot
-layer_depths_mean   = as.data.frame(matrix(0,7,1))
-layer_velocity_mean = as.data.frame(matrix(0,7,1))
-for(j in 1:7){
+layer_depths_mean   = as.data.frame(matrix(0,nm,1))
+layer_velocity_mean = as.data.frame(matrix(0,nm,1))
+for(j in 1:nm){
   layer_depths_mean[j,1]   = mean(z2$layer_depths_array[j,1,]) * -1
   layer_velocity_mean[j,1] = mean(z2$layer_velocity_array[j,1,])
 }
@@ -1103,7 +1086,7 @@ for(j in 1:7){
 layer_depths_mean = t.default(layer_depths_mean)
 
 ## trim 8th layer of TDS_mean matrix for plotting
-TDS_mean = TDS_mean[1:7,]
+TDS_mean = TDS_mean[1:nm,]
 
 
 # compile into one df
@@ -1141,7 +1124,7 @@ temp5 <- left_join(temp3, temp4, by = c("depth", "t"))
 temp6 <- left_join(temp5, temp2, by = c("depth", "t"))
 
 temp6$depth <- temp6$depth * 0.3048 # convert depth to m
-temp6$t     <- rep(seq(0, 350, 50), each = 7) # time from index to years
+temp6$t     <- rep(seq(0, 350, 50), each = nm) # time from index to years
 temp6       <- filter(temp6, t <= 300) 
 
 # make the animation
@@ -1163,7 +1146,7 @@ anim <- ggplot(temp6, aes(depth, value)) +
   ease_aes("linear") +
   theme(panel.grid.minor = element_blank())
 
-anim_save("~/GitHub/Monte-Carlo-Mixing-Model/results/salinization.gif", anim) # save to root
+anim_save("~/Documents/GitHub/Monte-Carlo-Mixing-Model/results/salinization.gif", anim) # save to root
 
 
 
