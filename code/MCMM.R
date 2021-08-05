@@ -291,7 +291,7 @@ Mtons_to_metric_tons(SW_annual_mass) / 1e6          # metric Mtons
 N = 1000
 
 # number of layers and minus one
-nlay = 80
+nlay = 100
 nm   = nlay - 1
 
 ## Compute all output  
